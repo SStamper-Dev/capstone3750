@@ -99,14 +99,24 @@ if ($method === "POST" && $path === "/api/reset") {
 // POST /api/players
 if ($method === "POST" && $path === "/api/players") {
     $data = json_input();
-    if (!isset($data["username"])) {
+
+    if (!isset($data["username"]) || trim($data["username"]) === "") {
         respond(["error" => "Username required"], 400);
     }
 
-    // Stub insert
-    $player_id = rand(1, 9999);
+    try {
+        $stmt = $pdo->prepare("INSERT INTO player (username) VALUES (:username)");
+        $stmt->execute([
+            ":username" => $data["username"]
+        ]);
 
-    respond(["player_id" => $player_id], 201);
+        $player_id = $pdo->lastInsertId();
+
+        respond(["player_id" => (int)$player_id], 201);
+
+    } catch (PDOException $e) {
+        respond(["error" => "Failed to create player"], 500);
+    }
 }
 
 // GET /api/players/{id}/stats
