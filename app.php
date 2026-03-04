@@ -72,8 +72,28 @@ $segments = explode("/", trim($path, "/"));
 
 // POST /api/reset
 if ($method === "POST" && $path === "/api/reset") {
-    // Stub: truncate tables later
-    respond(["status" => "reset"]);
+    try {
+        // Disable FK checks
+        $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
+
+        // Get all tables in current database
+        $stmt = $pdo->query("SHOW TABLES");
+        $tables = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        foreach ($tables as $table) {
+            $pdo->exec("TRUNCATE TABLE `$table`");
+        }
+
+        // Re-enable FK checks
+        $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
+
+        respond(["status" => "reset"], 200);
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["error" => "Failed to reset database"]);
+        exit;
+    }
 }
 
 // POST /api/players
