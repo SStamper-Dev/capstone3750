@@ -5,6 +5,11 @@ header("Content-Type: application/json");
    CONFIG / ENV
 =========================== */
 
+//load local environment variables if file exists
+if (file_exists(__DIR__ . '/.env.local.php')) {
+    require __DIR__ . '/.env.local.php';
+}
+
 $DB_HOST = getenv("DB_HOST");
 $DB_NAME = getenv("DB_NAME");
 $DB_USER = getenv("DB_USER");
