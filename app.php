@@ -78,12 +78,17 @@ $segments = explode("/", trim($path, "/"));
 // POST /api/reset
 if ($method === "POST" && $path === "/api/reset") {
     try {
+        // Only truncate Battleship tables because it seems the Solo Project is also in this database
+        $tables = [
+            "move",
+            "ship",
+            "game_player",
+            "game",
+            "player"
+        ];
+
         // Disable FK checks
         $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
-
-        // Get all tables in current database
-        $stmt = $pdo->query("SHOW TABLES");
-        $tables = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         foreach ($tables as $table) {
             $pdo->exec("TRUNCATE TABLE `$table`");
@@ -95,9 +100,7 @@ if ($method === "POST" && $path === "/api/reset") {
         respond(["status" => "reset"], 200);
 
     } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(["error" => "Failed to reset database"]);
-        exit;
+        respond(["error" => "Failed to reset database"], 500);
     }
 }
 
