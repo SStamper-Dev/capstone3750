@@ -155,7 +155,17 @@ if ($method === "POST" && $path === "/api/games") {
         respond(["error" => "Invalid max players"], 400);
     }
 
-    $game_id = rand(1, 9999);
+    $stmt = $pdo->prepare("
+        INSERT INTO game (grid_size, status, current_turn_index, created_at, max_players)
+        VALUES (:grid_size, 'waiting', 0, NOW(), :max_players)
+        ");
+
+        $stmt->execute([
+            ":grid_size" => $data["grid_size"],
+            ":max_players" => $data["max_players"]
+        ]);
+
+    $game_id = $pdo->lastInsertId();
 
     respond(["game_id" => $game_id], 201);
 }
