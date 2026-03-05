@@ -186,18 +186,78 @@ if ($method === "POST" && $path === "/api/games") {
 
 // POST /api/games/{id}/join
 if ($method === "POST" && preg_match("#^/api/games/(\d+)/join$#", $path, $m)) {
-    respond(["status" => "joined"]);
+    $game_id = $m[1]; // Extract game ID from URL
+    $data = json_input();
+    if (!isset($data["player_id"])) {
+        respond(["error" => "Player ID required"], 400);
+    }
+    else {
+        $player_id = $data["player_id"];
+        // Check if game exists and is waiting for players
+        $stmt = $pdo->prepare("SELECT * FROM game WHERE game_id = :game_id");
+        $stmt->execute([":game_id" => $game_id]);
+        $game = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$game) {
+            respond(["error" => "Game not found"], 404);
+        }
+        if ($game["status"] !== "waiting") {
+            respond(["error" => "Game is not accepting players"], 400);
+        }
+        // Check if player is already in the game
+        $stmt = $pdo->prepare("SELECT * FROM game_player WHERE game_id = :game_id AND player_id = :player_id");
+        $stmt->execute([
+            ":game_id" => $game_id,
+            ":player_id" => $player_id
+        ]);
+        if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+            respond(["error" => "Player already in game"], 400);
+        }
+        // Check if game is full
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM game_player WHERE game_id = :game_id");
+        $stmt->execute([":game_id" => $game_id]);
+        $player_count = $stmt->fetchColumn();
+        if ($player_count >= $game["max_players"]) {
+            respond(["error" => "Game is full"], 400);
+        }
+        // Figure out turn order for new player (max existing turn_order for current game id+ 1)
+        $stmt = $pdo->prepare("SELECT MAX(turn_order) AS max_turn_order FROM game_player WHERE game_id = :game_id");
+        $stmt->execute([":game_id" => $game_id]);
+        $max_turn_order = $stmt->fetchColumn();
+        $turn_order = $max_turn_order !== null ? $max_turn_order + 1 : 0;
+        // Add player to game
+        $stmt = $pdo->prepare("INSERT INTO game_player (game_id, player_id, turn_order, is_out, joined_at, has_placed_ships) VALUES (:game_id, :player_id, :turn_order, 0, NOW(), 0)");
+        $stmt->execute([
+            ":game_id" => $game_id,
+            ":player_id" => $player_id,
+            ":turn_order" => $turn_order
+        ]);
+
+        respond(["status" => "joined"]);
+    }
 }
 
 // GET /api/games/{id}
 if ($method === "GET" && preg_match("#^/api/games/(\d+)$#", $path, $m)) {
-    respond([
-        "game_id" => (int)$m[1],
-        "grid_size" => 8,
-        "status" => "waiting",
-        "current_turn_index" => 0,
-        "active_players" => 1
-    ]);
+    $game_id = $m[1]; // Extract game ID from URL
+
+    $stmt = $pdo->prepare("SELECT 
+            g.game_id,
+            g.grid_size,
+            g.status,
+            g.current_turn_index,
+            COUNT(gp.player_id) AS active_players
+            FROM game g
+            LEFT JOIN game_player gp ON g.game_id = gp.game_id
+            WHERE g.game_id = :game_id
+            GROUP BY g.game_id");
+    $stmt->execute([":game_id" => $game_id]);
+    $game = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$game) {
+        respond(["error" => "Game not found"], 404);
+    } else {
+        respond($game);
+    }
 }
 
 // POST /api/games/{id}/place
