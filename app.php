@@ -129,17 +129,24 @@ if ($method === "POST" && $path === "/api/players") {
 
 // GET /api/players/{id}/stats
 if ($method === "GET" && preg_match("#^/api/players/(\d+)/stats$#", $path, $m)) {
-    $player_id = $m[1];
+    $player_id = $m[1]; // Extract player ID from URL
 
-    // Stub stats
-    respond([
-        "games_played" => 0,
-        "wins" => 0,
-        "losses" => 0,
-        "total_shots" => 0,
-        "total_hits" => 0,
-        "accuracy" => 0.0
-    ]);
+    // query player table get their total_wins, total_losses, total_shots, and total_hits fields
+    $stmt = $pdo->prepare("
+        SELECT total_wins, total_losses, total_shots, total_hits
+        FROM player
+        WHERE player_id = :player_id
+    ");
+    $stmt->execute([":player_id" => $player_id]);
+    $stats = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$stats) {
+        respond(["error" => "Player not found"], 404);
+    }
+    else{
+        respond($stats);
+    }
+    
 }
 
 // POST /api/games
