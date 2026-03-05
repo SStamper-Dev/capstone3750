@@ -144,6 +144,10 @@ if ($method === "GET" && preg_match("#^/api/players/(\d+)/stats$#", $path, $m)) 
         respond(["error" => "Player not found"], 404);
     }
     else{
+        //add total_wins and total_losses and save it in response as games_played
+        $stats["games_played"] = $stats["total_wins"] + $stats["total_losses"];
+        //calcuate accuracy as total_hits / total_shots and save it in response as accuracy as a decimal value
+        $stats["accuracy"] = $stats["total_shots"] > 0 ? $stats["total_hits"] / $stats["total_shots"] : 0;
         respond($stats);
     }
     
