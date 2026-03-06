@@ -561,8 +561,11 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)/moves$#", $path, $m)) {
     ");
     $stmt->execute([":game_id" => $game_id]);
     $moves = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    respond(["moves" => $moves]);
+    if (!$moves) {
+        respond(["error" => "Game not found or no moves made"], 404);
+    } else {
+        respond(["moves" => $moves]);
+    }
 }
 
 /* ===========================
