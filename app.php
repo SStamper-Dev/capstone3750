@@ -261,7 +261,7 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)$#", $path, $m)) {
 }
 
 // POST /api/games/{id}/place
-if ($method === "POST" && preg_match("#^/api/games/(\d+)/place$#", $path)) {
+if ($method === "POST" && preg_match("#^/api/games/(\d+)/place$#", $path, $m)) {
     $data = json_input();
 
     if (!isset($data["player_id"], $data["ships"])) {
@@ -271,6 +271,45 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/place$#", $path)) {
     if (count($data["ships"]) !== 3) {
         respond(["error" => "Exactly 3 ships required"], 400);
     }
+    //check that "row" and "col" are present for each ship, they are within the grid bounds, and that no two ships occupy the same cell
+    $positions = [];
+    $game_id = $m[1]; // Extract game ID from URL
+    // Get grid size for the game
+    $stmt = $pdo->prepare("SELECT grid_size FROM game WHERE game_id = :game_id");
+    $stmt->execute([":game_id" => $game_id]);
+    $game = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    foreach ($data["ships"] as $ship) {
+        if (!isset($ship["row"], $ship["col"])) {
+            respond(["error" => "Each ship must have row and col"], 400);
+        }
+        if ($ship["row"] < 0 || $ship["row"] >= $game["grid_size"] || $ship["col"] < 0 || $ship["col"] >= $game["grid_size"]) {
+            respond(["error" => "Ship positions must be within grid bounds"], 400);
+        }
+        $pos_key = $ship["row"] . "," . $ship["col"];
+        if (in_array($pos_key, $positions)) {
+            respond(["error" => "Ships cannot occupy the same cell"], 400);
+        }
+        $positions[] = $pos_key;
+    }
+
+    //create a record in "ship" table with game_id, player_id, x_cord, y_cord, and is_hit as false
+    $stmt = $pdo->prepare("INSERT INTO ship (game_id, player_id, x_cord, y_cord, is_hit) VALUES (:game_id, :player_id, :x_cord, :y_cord, 0)");
+    foreach ($data["ships"] as $ship) {
+        $stmt->execute([
+            ":game_id" => $game_id,
+            ":player_id" => $data["player_id"],
+            ":x_cord" => $ship["row"],
+            ":y_cord" => $ship["col"]
+        ]);
+    }
+
+    //set has_placed_ships to true for the player in game_player table
+    $stmt = $pdo->prepare("UPDATE game_player SET has_placed_ships = 1 WHERE game_id = :game_id AND player_id = :player_id");
+    $stmt->execute([
+        ":game_id" => $game_id,
+        ":player_id" => $data["player_id"]
+    ]);
 
     respond(["status" => "ships placed"]);
 }
