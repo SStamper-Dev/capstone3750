@@ -317,180 +317,211 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/place$#", $path, $m)) {
 // POST /api/games/{id}/fire
 if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
     $data = json_input();
-    $game_id = $m[1]; // Extract game ID from URL
-
+    $game_id = (int)$m[1];
     if (!isset($data["player_id"], $data["row"], $data["col"])) {
         respond(["error" => "Invalid request"], 400);
     }
-
-    // Check if it's the player's turn, if the game is active, and if the player is not out
-    $stmt = $pdo->prepare("SELECT 
-            g.status,
-            g.current_turn_index,
-            gp.turn_order,
-            gp.is_out
+    $player_id = (int)$data["player_id"];
+    $row = (int)$data["row"];
+    $col = (int)$data["col"];
+    try {
+        $pdo->beginTransaction();
+        /* ---------------------------------------
+           Validate player + turn
+        --------------------------------------- */
+        $stmt = $pdo->prepare("
+            SELECT g.status, g.current_turn_index, gp.turn_order, gp.is_out
             FROM game g
             JOIN game_player gp ON g.game_id = gp.game_id
-            WHERE g.game_id = :game_id AND gp.player_id = :player_id"); 
-    $stmt->execute([
-        ":game_id" => $game_id,
-        ":player_id" => $data["player_id"]
-    ]);
-    $player_info = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$player_info) {
-        respond(["error" => "Player not in game"], 404);
-    }
-    if ($player_info["status"] !== "active") {
-        respond(["error" => "Game is not active"], 400);
-    }
-    if ($player_info["is_out"]) {
-        respond(["error" => "Player is out"], 400);
-    }
-    if ($player_info["current_turn_index"] != $player_info["turn_order"]) {
-        respond(["error" => "Not player's turn"], 400);
-    }
-
-    // Check if the shot is a hit or miss, ignoring your ships
-    $stmt = $pdo->prepare("SELECT * FROM ship WHERE game_id = :game_id AND player_id != :player_id AND x_cord = :row AND y_cord = :col");
-    $stmt->execute([
-        ":game_id" => $game_id,
-        ":player_id" => $data["player_id"],
-        ":row" => $data["row"],
-        ":col" => $data["col"]
-    ]);
-    $ship = $stmt->fetch(PDO::FETCH_ASSOC);
-    $is_hit = $ship ? true : false;
-
-    // If it's a hit, update the ship's is_hit to true and check if all ships for the owner of the hit ship are now hit, if so mark that player as out in game_player table
-    if ($is_hit) {
-        $stmt = $pdo->prepare("UPDATE ship SET is_hit = 1 WHERE ship_id = :ship_id");
-        $stmt->execute([":ship_id" => $ship["ship_id"]]);
-
-        // Check if all ships for the owner of the hit ship are now hit
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM ship WHERE game_id = :game_id AND player_id = :owner_id AND is_hit = 0");
+            WHERE g.game_id = :game_id AND gp.player_id = :player_id
+        ");
         $stmt->execute([
             ":game_id" => $game_id,
-            ":owner_id" => $ship["player_id"]
+            ":player_id" => $player_id
         ]);
-        $remaining_ships = $stmt->fetchColumn();
-        if ($remaining_ships == 0) {
-            // Mark that player as out in game_player table
-            $stmt = $pdo->prepare("UPDATE game_player SET is_out = 1 WHERE game_id = :game_id AND player_id = :owner_id");
+        $player = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$player) respond(["error"=>"Player not in game"],404);
+        if ($player["status"] !== "active") respond(["error"=>"Game not active"],400);
+        if ($player["is_out"]) respond(["error"=>"Player eliminated"],400);
+        if ($player["current_turn_index"] != $player["turn_order"]) respond(["error"=>"Not your turn"],400);
+        /* ---------------------------------------
+           Increment total_shots
+        --------------------------------------- */
+        $stmt = $pdo->prepare("
+            UPDATE player
+            SET total_shots = total_shots + 1
+            WHERE player_id = :player_id
+        ");
+        $stmt->execute([":player_id"=>$player_id]);
+        /* ---------------------------------------
+           Determine hit or miss
+        --------------------------------------- */
+        $stmt = $pdo->prepare("
+            SELECT ship_id, player_id
+            FROM ship
+            WHERE game_id = :game_id
+            AND player_id != :player_id
+            AND x_cord = :row
+            AND y_cord = :col
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ":game_id"=>$game_id,
+            ":player_id"=>$player_id,
+            ":row"=>$row,
+            ":col"=>$col
+        ]);
+        $ship = $stmt->fetch(PDO::FETCH_ASSOC);
+        $result = $ship ? "hit" : "miss";
+        /* ---------------------------------------
+           Handle hit logic
+        --------------------------------------- */
+        if ($ship) {
+            // mark ship as hit
+            $stmt = $pdo->prepare("UPDATE ship SET is_hit = 1 WHERE ship_id = :ship_id");
+            $stmt->execute([":ship_id"=>$ship["ship_id"]]);
+            // increment total_hits
+            $stmt = $pdo->prepare("
+                UPDATE player
+                SET total_hits = total_hits + 1
+                WHERE player_id = :player_id
+            ");
+            $stmt->execute([":player_id"=>$player_id]);
+            // check if all ships for the owner of the hit ship are now hit, if so mark them as out in game_player table
+            $owner_id = $ship["player_id"];
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*)
+                FROM ship
+                WHERE game_id = :game_id
+                AND player_id = :owner_id
+                AND is_hit = 0
+            ");
             $stmt->execute([
-                ":game_id" => $game_id,
-                ":owner_id" => $ship["player_id"]
+                ":game_id"=>$game_id,
+                ":owner_id"=>$owner_id
             ]);
-
-            // Check if only one player is left, if so mark game as finished
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM game_player WHERE game_id = :game_id AND is_out = 0");
-            $stmt->execute([":game_id" => $game_id]);
-            $remaining_players = $stmt->fetchColumn();
-            if ($remaining_players == 1) {
-                $stmt = $pdo->prepare("UPDATE game SET status = 'finished' WHERE game_id = :game_id");
-                $stmt->execute([":game_id" => $game_id]);
+            if ($stmt->fetchColumn() == 0) {
+                $stmt = $pdo->prepare("
+                    UPDATE game_player
+                    SET is_out = 1
+                    WHERE game_id = :game_id
+                    AND player_id = :owner_id
+                ");
+                $stmt->execute([
+                    ":game_id"=>$game_id,
+                    ":owner_id"=>$owner_id
+                ]);
             }
         }
-    }
-
-    //create a record in "move" table with game_id, player_id, x_cord, y_cord, result (enum with 'hit' or 'miss'), and made_at (timestamp)
-    $stmt = $pdo->prepare("INSERT INTO move (game_id, player_id, x_cord, y_cord, result, made_at) VALUES (:game_id, :player_id, :x_cord, :y_cord, :result, NOW())");
-    $stmt->execute([
-        ":game_id" => $game_id,
-        ":player_id" => $data["player_id"],
-        ":x_cord" => $data["row"],
-        ":y_cord" => $data["col"],
-        ":result" => $is_hit ? "hit" : "miss"
-    ]);
-
-    // Update current_turn_index to the next active player in the game, wrapped around to the lowest if last player just went
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM game_player WHERE game_id = :game_id AND is_out = 0");
-    $stmt->execute([":game_id" => $game_id]);
-    $total_active_players = $stmt->fetchColumn();
-    if ($total_active_players > 1) {
-        $stmt = $pdo->prepare("SELECT turn_order FROM game_player WHERE game_id = :game_id AND player_id = :player_id");
+        /* ---------------------------------------
+           Record move
+        --------------------------------------- */
+        $stmt = $pdo->prepare("
+            INSERT INTO move
+            (game_id, player_id, x_cord, y_cord, result, made_at)
+            VALUES (:game_id,:player_id,:row,:col,:result,NOW())
+        ");
         $stmt->execute([
-            ":game_id" => $game_id,
-            ":player_id" => $data["player_id"]
+            ":game_id"=>$game_id,
+            ":player_id"=>$player_id,
+            ":row"=>$row,
+            ":col"=>$col,
+            ":result"=>$result
         ]);
-        $current_turn_order = $stmt->fetchColumn();
-
-        // Find the next active player
-        $stmt = $pdo->prepare("SELECT turn_order FROM game_player WHERE game_id = :game_id AND is_out = 0 AND turn_order > :current_turn_order ORDER BY turn_order ASC LIMIT 1");
-        $stmt->execute([
-            ":game_id" => $game_id,
-            ":current_turn_order" => $current_turn_order
-        ]);
-        $next_turn_order = $stmt->fetchColumn();
-
-        // If there is no next player with a higher turn order, wrap around to the lowest turn order
-        if ($next_turn_order === false) {
-            $stmt = $pdo->prepare("SELECT turn_order FROM game_player WHERE game_id = :game_id AND is_out = 0 ORDER BY turn_order ASC LIMIT 1");
-            $stmt->execute([":game_id" => $game_id]);
-            $next_turn_order = $stmt->fetchColumn();
-        }
-
-        // Update current_turn_index to the next player's turn order
-        $stmt = $pdo->prepare("UPDATE game SET current_turn_index = :next_turn_order WHERE game_id = :game_id");
-        $stmt->execute([
-            ":next_turn_order" => $next_turn_order,
-            ":game_id" => $game_id
-        ]);
-    }
-
-    // Build response with result of shot ('hit' or 'miss'), next_player_id (null if game finished), game_status, and winner_id (if game finished)
-    $response = [
-        "result" => $is_hit ? "hit" : "miss",
-        "game_status" => $total_active_players > 1 ? "active" : "finished"
-    ];
-    if ($response["game_status"] === "finished") {
-        // Get winner_id
-        $stmt = $pdo->prepare("SELECT player_id FROM game_player WHERE game_id = :game_id AND is_out = 0");
-        $stmt->execute([":game_id" => $game_id]);
-        $winner_id = $stmt->fetchColumn();
-        $response["winner_id"] = (int)$winner_id;
-
-        // Update players' total_wins, total_losses, total_shots, and total_hits
-        // Winner gets a win and shots/hits from their moves, losers get a loss and shots/hits from their moves
-        $stmt = $pdo->prepare("SELECT player_id FROM game_player WHERE game_id = :game_id");
-        $stmt->execute([":game_id" => $game_id]);
+        /* ---------------------------------------
+           Get remaining active players
+        --------------------------------------- */
+        $stmt = $pdo->prepare("
+            SELECT player_id, turn_order
+            FROM game_player
+            WHERE game_id = :game_id
+            AND is_out = 0
+            ORDER BY turn_order
+        ");
+        $stmt->execute([":game_id"=>$game_id]);
         $players = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($players as $player) {
-            $player_id = $player["player_id"];
-            // Get shots and hits for this player
-            $stmt = $pdo->prepare("SELECT COUNT(*) AS shots, SUM(result = 'hit') AS hits FROM move WHERE game_id = :game_id AND player_id = :player_id");
+        /* ---------------------------------------
+           Game finished
+        --------------------------------------- */
+        if (count($players) === 1) {
+            // mark game as finished
+            $winner_id = (int)$players[0]["player_id"];
+            $stmt = $pdo->prepare("
+                UPDATE game
+                SET status = 'finished'
+                WHERE game_id = :game_id
+            ");
+            $stmt->execute([":game_id"=>$game_id]);
+             // winner stat
+            $stmt = $pdo->prepare("
+                UPDATE player
+                SET total_wins = total_wins + 1
+                WHERE player_id = :winner_id
+            ");
+            $stmt->execute([":winner_id"=>$winner_id]);
+            // loser stats
+            $stmt = $pdo->prepare("
+                UPDATE player
+                SET total_losses = total_losses + 1
+                WHERE player_id IN (
+                    SELECT player_id
+                    FROM game_player
+                    WHERE game_id = :game_id
+                    AND player_id != :winner_id
+                )
+            ");
             $stmt->execute([
-                ":game_id" => $game_id,
-                ":player_id" => $player_id
+                ":game_id"=>$game_id,
+                ":winner_id"=>$winner_id
             ]);
-            $stats = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($player_id == $winner_id) {
-                // Update winner's stats
-                $stmt = $pdo->prepare("UPDATE player SET total_wins = total_wins + 1, total_shots = total_shots + :shots, total_hits = total_hits + :hits WHERE player_id = :player_id");
-                $stmt->execute([
-                    ":shots" => $stats["shots"],
-                    ":hits" => $stats["hits"],
-                    ":player_id" => $player_id
-                ]);
-            } else {
-                // Update loser's stats
-                $stmt = $pdo->prepare("UPDATE player SET total_losses = total_losses + 1, total_shots = total_shots + :shots, total_hits = total_hits + :hits WHERE player_id = :player_id");
-                $stmt->execute([
-                    ":shots" => $stats["shots"],
-                    ":hits" => $stats["hits"],
-                    ":player_id" => $player_id
-                ]);
+            $pdo->commit();
+            respond([
+                "result" => $result,
+                "next_player_id" => null,
+                "game_status" => "finished",
+                "winner_id" => $winner_id
+            ]);
+        }
+        /* ---------------------------------------
+           Determine next player
+        --------------------------------------- */
+        $current_turn = $player["turn_order"];
+        $next_player_id = null;
+        $next_turn = null;
+        foreach ($players as $p) {
+            if ($p["turn_order"] > $current_turn) {
+                $next_player_id = $p["player_id"];
+                $next_turn = $p["turn_order"];
+                break;
             }
         }
-    } else {
-        // Get next_player_id
-        $stmt = $pdo->prepare("SELECT player_id FROM game_player WHERE game_id = :game_id AND turn_order = :next_turn_order");
+        if (!$next_player_id) {
+            $next_player_id = $players[0]["player_id"];
+            $next_turn = $players[0]["turn_order"];
+        }
+        /* ---------------------------------------
+           Update turn index
+        --------------------------------------- */
+        $stmt = $pdo->prepare("
+            UPDATE game
+            SET current_turn_index = :turn
+            WHERE game_id = :game_id
+        ");
         $stmt->execute([
-            ":game_id" => $game_id,
-            ":next_turn_order" => $next_turn_order
+            ":turn"=>$next_turn,
+            ":game_id"=>$game_id
         ]);
-        $next_player_id = $stmt->fetchColumn();
-        $response["next_player_id"] = (int)$next_player_id;
+        $pdo->commit();
+        respond([
+            "result" => $result,
+            "next_player_id" => (int)$next_player_id,
+            "game_status" => "active"
+        ]);
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        respond(["error" => "Failed to process move"], 500);
     }
 }
 
