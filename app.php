@@ -345,6 +345,30 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
         if ($player["is_out"]) respond(["error"=>"Player eliminated"],400);
         if ($player["current_turn_index"] != $player["turn_order"]) respond(["error"=>"Not your turn"],400);
         /* ---------------------------------------
+        Prevent shooting same location twice
+        --------------------------------------- */
+        $stmt = $pdo->prepare("
+            SELECT 1
+            FROM move
+            WHERE game_id = :game_id
+            AND player_id = :player_id
+            AND x_cord = :row
+            AND y_cord = :col
+            LIMIT 1
+        ");
+
+        $stmt->execute([
+            ":game_id" => $game_id,
+            ":player_id" => $player_id,
+            ":row" => $row,
+            ":col" => $col
+        ]);
+
+        if ($stmt->fetch()) {
+            $pdo->rollBack();
+            respond(["error" => "Location already targeted"], 400);
+        }
+        /* ---------------------------------------
            Increment total_shots
         --------------------------------------- */
         $stmt = $pdo->prepare("
