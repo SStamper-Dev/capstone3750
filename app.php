@@ -550,10 +550,19 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
 }
 
 // GET /api/games/{id}/moves
-if ($method === "GET" && preg_match("#^/api/games/(\d+)/moves$#", $path)) {
-    respond([
-        "moves" => []
-    ]);
+if ($method === "GET" && preg_match("#^/api/games/(\d+)/moves$#", $path, $m)) {
+    $game_id = $m[1]; // Extract game ID from URL
+
+    $stmt = $pdo->prepare("
+        SELECT player_id, x_cord, y_cord, result, made_at
+        FROM move
+        WHERE game_id = :game_id
+        ORDER BY made_at ASC
+    ");
+    $stmt->execute([":game_id" => $game_id]);
+    $moves = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    respond(["moves" => $moves]);
 }
 
 /* ===========================
