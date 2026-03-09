@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ['...', 'php82', 'php82Extensions.pdo_mysql', 'apacheHttpd']
+nixPkgs = ['php82', 'php82Extensions.pdo_mysql', 'apacheHttpd']
 
 [phases.build]
 cmds = ['echo "Build phase complete"']
