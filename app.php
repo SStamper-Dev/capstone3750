@@ -1,5 +1,5 @@
 <?php
-header("Access-Control-Allow-Origin: https://projectwarship.netlify.app/");
+header("Access-Control-Allow-Origin: https://projectwarship.netlify.app");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, X-Requested-With, X-Test-Password");
 
