@@ -15,35 +15,32 @@ header("Content-Type: application/json");
 =========================== */
 
 //load local environment variables if file exists
-// Use a more robust way to fetch environment variables
-$DB_HOST = getenv("DB_HOST") ?: ($_ENV["DB_HOST"] ?? null);
-$DB_NAME = getenv("DB_NAME") ?: ($_ENV["DB_NAME"] ?? null);
-$DB_USER = getenv("DB_USER") ?: ($_ENV["DB_USER"] ?? null);
-$DB_PASS = getenv("DB_PASS") ?: ($_ENV["DB_PASS"] ?? null);
-$DB_PORT = getenv("DB_PORT") ?: ($_ENV["DB_PORT"] ?? 3306);
-
-// Defensive check: If essential variables are missing, stop immediately
-if (!$DB_HOST || !$DB_USER) {
-    http_response_code(500);
-    echo json_encode(["error" => "Environment variables missing from PHP process"]);
-    exit;
+if (file_exists(__DIR__ . '/.env.local.php')) {
+    require __DIR__ . '/.env.local.php';
 }
+
+$DB_HOST = getenv("DB_HOST");
+$DB_NAME = getenv("DB_NAME");
+$DB_USER = getenv("DB_USER");
+$DB_PASS = getenv("DB_PASS");
+$DB_PORT = getenv("DB_PORT") ?: 3306;
+
+$TEST_MODE = true;
+$TEST_PASSWORD = "clemson-test-2026";
 
 try {
-    // Construct DSN carefully
-    $dsn = "mysql:host=$DB_HOST;port=$DB_PORT;dbname=$DB_NAME;charset=utf8mb4";
-    
-    $pdo = new PDO($dsn, $DB_USER, $DB_PASS, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_EMULATE_PREPARES => false, // Better for security and debugging
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
+    $pdo = new PDO(
+        "mysql:host=$DB_HOST;port=$DB_PORT;dbname=$DB_NAME;charset=utf8mb4",
+        $DB_USER,
+        $DB_PASS,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
 } catch (PDOException $e) {
     http_response_code(500);
-    // TEMPORARY: Echo the actual error message to find the culprit
-    echo json_encode(["error" => "PDO Connection Error: " . $e->getMessage()]);
+    echo json_encode(["error" => "Database connection failed"]);
     exit;
 }
+
 /* ===========================
    HELPERS
 =========================== */
