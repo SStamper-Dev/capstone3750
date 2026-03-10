@@ -17,19 +17,26 @@ header("Content-Type: application/json");
 //load local environment variables if file exists
 if (file_exists(__DIR__ . '/.env.local.php')) {
     require __DIR__ . '/.env.local.php';
+
+    $DB_HOST = getenv("DB_HOST");
+    $DB_NAME = getenv("DB_NAME");
+    $DB_USER = getenv("DB_USER");
+    $DB_PASS = getenv("DB_PASS");
+    $DB_PORT = getenv("DB_PORT") ?: 3306;
 }
+else{
+    $DB_HOST = getenv("MYSQLHOST") ?: ($_ENV["MYSQLHOST"] ?? 'mysql.railway.internal');
+    $DB_PORT = getenv("MYSQLPORT") ?: ($_ENV["MYSQLPORT"] ?? 3306);
+    $DB_USER = getenv("MYSQLUSER") ?: ($_ENV["MYSQLUSER"] ?? 'root');
+    $DB_PASS = getenv("MYSQLPASSWORD") ?: ($_ENV["MYSQLPASSWORD"] ?? null);
+    $DB_NAME = getenv("MYSQLDATABASE") ?: ($_ENV["MYSQLDATABASE"] ?? null);
 
-$DB_HOST = getenv("MYSQLHOST") ?: ($_ENV["MYSQLHOST"] ?? 'mysql.railway.internal');
-$DB_PORT = getenv("MYSQLPORT") ?: ($_ENV["MYSQLPORT"] ?? 3306);
-$DB_USER = getenv("MYSQLUSER") ?: ($_ENV["MYSQLUSER"] ?? 'root');
-$DB_PASS = getenv("MYSQLPASSWORD") ?: ($_ENV["MYSQLPASSWORD"] ?? null);
-$DB_NAME = getenv("MYSQLDATABASE") ?: ($_ENV["MYSQLDATABASE"] ?? null);
-
-if (!$DB_PASS) {
-    $DB_HOST = getenv("DB_HOST") ?: ($_ENV["DB_HOST"] ?? $DB_HOST);
-    $DB_USER = getenv("DB_USER") ?: ($_ENV["DB_USER"] ?? $DB_USER);
-    $DB_PASS = getenv("DB_PASS") ?: ($_ENV["DB_PASS"] ?? null);
-    $DB_NAME = getenv("DB_NAME") ?: ($_ENV["DB_NAME"] ?? null);
+    if (!$DB_PASS) {
+        $DB_HOST = getenv("DB_HOST") ?: ($_ENV["DB_HOST"] ?? $DB_HOST);
+        $DB_USER = getenv("DB_USER") ?: ($_ENV["DB_USER"] ?? $DB_USER);
+        $DB_PASS = getenv("DB_PASS") ?: ($_ENV["DB_PASS"] ?? null);
+        $DB_NAME = getenv("DB_NAME") ?: ($_ENV["DB_NAME"] ?? null);
+    }
 }
 $TEST_MODE = true;
 $TEST_PASSWORD = "clemson-test-2026";
