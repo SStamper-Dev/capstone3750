@@ -19,26 +19,25 @@ if (file_exists(__DIR__ . '/.env.local.php')) {
     require __DIR__ . '/.env.local.php';
 }
 
-$DB_HOST = getenv("DB_HOST");
-$DB_NAME = getenv("DB_NAME");
-$DB_USER = getenv("DB_USER");
-$DB_PASS = getenv("DB_PASS");
-$DB_PORT = getenv("DB_PORT") ?: 3306;
+$DB_HOST = getenv("MYSQLHOST") ?: 'mysql.railway.internal';
+$DB_PORT = getenv("MYSQLPORT") ?: 3306;
+$DB_USER = getenv("MYSQLUSER") ?: 'root';
+$DB_PASS = getenv("MYSQLPASSWORD");
+$DB_NAME = getenv("MYSQLDATABASE");
 
 $TEST_MODE = true;
 $TEST_PASSWORD = "clemson-test-2026";
 
 try {
-    $pdo = new PDO(
-        "mysql:host=$DB_HOST;port=$DB_PORT;dbname=$DB_NAME;charset=utf8mb4",
-        $DB_USER,
-        $DB_PASS,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
+    $dsn = "mysql:host=$DB_HOST;port=$DB_PORT;dbname=$DB_NAME;charset=utf8mb4";
+    $pdo = new PDO($dsn, $DB_USER, $DB_PASS, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_TIMEOUT => 5 // Force a PHP error if it takes too long
+    ]);
 } catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode(["error" => "Database connection failed"]);
-    exit;
+    // This will now show up in your Railway logs
+    error_log("BATTLESHIP DB ERROR: " . $e->getMessage()); 
+    respond(["error" => "Database connection failed"], 500);
 }
 
 /* ===========================
