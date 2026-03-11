@@ -637,6 +637,14 @@ function place_ships($pdo, $game_id, $data){
     if (count($data["ships"]) !== 3) {
         respond(["error" => "Exactly 3 ships required"], 400);
     }
+    //if game status is not waiting, return error
+     $stmt = $pdo->prepare("SELECT status FROM game WHERE game_id = :game_id");
+    $stmt->execute([":game_id" => $game_id]);
+    $game_status = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($game_status["status"] !== "waiting") {
+        respond(["error" => "Cannot place ships in a game that is not waiting"], 400);
+    }
+    
     //check that "row" and "col" are present for each ship, they are within the grid bounds, and that no two ships occupy the same cell
     $positions = [];
     // Get grid size for the game
