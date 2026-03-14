@@ -1,9 +1,9 @@
-# capstone3750
+# capstone3750 (project backend repository)
 
 ## Project overview
 A multiplayer web app Battleship game.
 ## Architecture summary
-The [backend](https://github.com/SStamper-Dev/capstone3750) is PHP for managing the server's API endpoints. It connects to a MySQL database for storing player, ship, and game information. The [frontend](https://github.com/SStamper-Dev/warship) is HTML/CSS and JavaScript for handling user interaction and sending it to the server.
+The [backend](https://github.com/SStamper-Dev/capstone3750) is PHP for managing the server's API endpoints. It connects to a MySQL database (on the same network) for storing player, ship, and game information. The [frontend](https://github.com/SStamper-Dev/warship) is HTML/CSS and JavaScript for handling user interaction and sending it to the server.
 ## API description
 ### Production Endpoints
 * POST   /api/reset - clears all tables
@@ -24,7 +24,9 @@ The [backend](https://github.com/SStamper-Dev/capstone3750) is PHP for managing 
 * Seth Stamper
 ## AI tool(s) used
 * Claude
+* Google Gemini
 ## Major role of each human + AI
 * Justin Hooker - PHP backend/API endpoints
 * Seth Stamper - Frontend visual design, JavaScript, and database/table schema
-* Claude - A PHP file outlining the endpoints, some refactoring, and assistance in some endpoint implementation. 
+* Claude - A PHP file outlining the endpoints, some refactoring, and assistance in some endpoint implementation.
+* Gemini - A JavaScript + HTML file for organizing page layout and connecting browser to PHP for resting
