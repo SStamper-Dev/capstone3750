@@ -134,6 +134,14 @@ if ($method === "POST" && $path === "/api/players") {
     }
 
     try {
+        $stmt = $pdo->prepare("SELECT player_id FROM player WHERE username = :username");
+        $stmt->execute([":username" => $data["username"]]);
+        $existing_player = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($existing_player) {
+            respond(["player_id" => (int)$existing_player["player_id"]], 200);
+        }
+
         $stmt = $pdo->prepare("INSERT INTO player (username) VALUES (:username)");
         $stmt->execute([
             ":username" => $data["username"]
@@ -296,6 +304,16 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
     $player_id = (int)$data["player_id"];
     $row = (int)$data["row"];
     $col = (int)$data["col"];
+
+    $stmt = $pdo->prepare("SELECT grid_size FROM game WHERE game_id = :game_id");
+    $stmt->execute([":game_id" => $game_id]);
+    $game_info = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$game_info) respond(["error" => "Game not found"], 404);
+
+    if($row < 0 || $row >= $game_info["grid_size"] || $col < 0 || $col >= $game_info["grid_size"]) {
+        respond(["error" => "Shot coordinates out of bounds"], 400);
+    }
+
     try {
         $pdo->beginTransaction();
         /* ---------------------------------------
@@ -628,7 +646,7 @@ respond(["error" => "Endpoint not found"], 404);
     PLACE SHIP LOGIC
 =========================== */
 function place_ships($pdo, $game_id, $data){
-    $data = json_input();
+    // $data = json_input(); (already done in caller)
 
     if (!isset($data["player_id"], $data["ships"])) {
         respond(["error" => "Invalid request"], 400);
