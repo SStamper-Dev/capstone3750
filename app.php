@@ -198,7 +198,10 @@ if ($method === "POST" && $path === "/api/games") {
         respond(["error" => "Invalid max players"], 400);
     }
 
-    $stmt = $pdo->prepare("
+    try {
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("
         INSERT INTO game (grid_size, status, current_turn_index, created_at, max_players)
         VALUES (:grid_size, 'waiting', 0, NOW(), :max_players)
         ");
@@ -207,10 +210,22 @@ if ($method === "POST" && $path === "/api/games") {
             ":grid_size" => $data["grid_size"],
             ":max_players" => $data["max_players"]
         ]);
+        $game_id = $pdo->lastInsertId();
 
-    $game_id = $pdo->lastInsertId();
-
-    respond(["game_id" => $game_id], 201);
+        // Add creator as first player in game_player table with turn_order 0
+        $stmt = pdo->prepare("INSERT INTO game_player (game_id, player_id, turn_order, is_out, joined_at, has_placed_ships) VALUES (:game_id, :player_id, 0, 0, NOW(), 0)");
+        $stmt->execute([
+            ":game_id" => $game_id,
+            ":player_id" => $data["creator_id"]
+        ]);
+        $pdo->commit();
+        respond(["game_id" => (int)$game_id], 201);
+    } catch(Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        respond(["error" => "Failed to create game"], 500);
+    }
 }
 
 // POST /api/games/{id}/join
@@ -551,11 +566,8 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)/moves$#", $path, $m)) {
     ");
     $stmt->execute([":game_id" => $game_id]);
     $moves = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    if (!$moves) {
-        respond(["error" => "Game not found or no moves made"], 404);
-    } else {
-        respond(["moves" => $moves]);
-    }
+    // Return empty array instead of 404
+    respond(["moves" => $moves ?: []]);
 }
 
 /* ===========================
@@ -701,6 +713,27 @@ function place_ships($pdo, $game_id, $data){
         ":game_id" => $game_id,
         ":player_id" => $data["player_id"]
     ]);
+
+    $stmt = $pdo->prepare("UPDATE game_player SET has_placed_ships = 1 WHERE game_id = :game_id AND player_id = :player_id");
+    $stmt->execute([":game_id" => $game_id, ":player_id" => $data["player_id"]]);
+
+    //Check if all players have placed ships to start the game
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM game_player WHERE game_id = ? AND has_placed_ships = 0");
+    $stmt->execute([$game_id]);
+    $still_waiting = $stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM game_player WHERE game_id = ?");
+    $stmt->execute([$game_id]);
+    $current_players = $stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("SELECT max_players FROM game WHERE game_id = ?");
+    $stmt->execute([$game_id]);
+    $max_players = $stmt->fetchColumn();
+
+    if ($still_waiting == 0 && $current_players == $max_players) {
+        $stmt = $pdo->prepare("UPDATE game SET status = 'active' WHERE game_id = ?");
+        $stmt->execute([$game_id]);
+    }
 
     respond(["status" => "ships placed"]);
 }
