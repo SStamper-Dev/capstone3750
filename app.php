@@ -230,53 +230,69 @@ if ($method === "POST" && $path === "/api/games") {
 
 // POST /api/games/{id}/join
 if ($method === "POST" && preg_match("#^/api/games/(\d+)/join$#", $path, $m)) {
-    $game_id = $m[1]; // Extract game ID from URL
+    $game_id = (int)$m[1];
     $data = json_input();
+    
     if (!isset($data["player_id"])) {
         respond(["error" => "Player ID required"], 400);
     }
-    else {
-        $player_id = $data["player_id"];
-        // Check if game exists and is waiting for players
-        $stmt = $pdo->prepare("SELECT * FROM game WHERE game_id = :game_id");
+
+    $player_id = (int)$data["player_id"];
+
+    try {
+        // 1. Start Transaction to handle high-concurrency "Stress" tests 
+        $pdo->beginTransaction();
+
+        // 2. Fetch game with FOR UPDATE to lock the row while we check capacity
+        $stmt = $pdo->prepare("SELECT max_players, status FROM game WHERE game_id = :game_id FOR UPDATE");
         $stmt->execute([":game_id" => $game_id]);
         $game = $stmt->fetch(PDO::FETCH_ASSOC);
+
         if (!$game) {
+            $pdo->rollBack();
             respond(["error" => "Game not found"], 404);
         }
+
         if ($game["status"] !== "waiting") {
+            $pdo->rollBack();
             respond(["error" => "Game is not accepting players"], 400);
         }
-        // Check if player is already in the game
-        $stmt = $pdo->prepare("SELECT * FROM game_player WHERE game_id = :game_id AND player_id = :player_id");
-        $stmt->execute([
-            ":game_id" => $game_id,
-            ":player_id" => $player_id
-        ]);
-        if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+
+        // 3. Check if player is already in the game
+        $stmt = $pdo->prepare("SELECT 1 FROM game_player WHERE game_id = ? AND player_id = ?");
+        $stmt->execute([$game_id, $player_id]);
+        if ($stmt->fetch()) {
+            $pdo->rollBack();
             respond(["error" => "Player already in game"], 400);
         }
-        // Check if game is full
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM game_player WHERE game_id = :game_id");
-        $stmt->execute([":game_id" => $game_id]);
-        $player_count = $stmt->fetchColumn();
-        if ($player_count >= $game["max_players"]) {
-            respond(["error" => "Game is full"], 400);
-        }
-        // Figure out turn order for new player (max existing turn_order for current game id+ 1)
-        $stmt = $pdo->prepare("SELECT MAX(turn_order) AS max_turn_order FROM game_player WHERE game_id = :game_id");
-        $stmt->execute([":game_id" => $game_id]);
-        $max_turn_order = $stmt->fetchColumn();
-        $turn_order = $max_turn_order !== null ? $max_turn_order + 1 : 0;
-        // Add player to game
-        $stmt = $pdo->prepare("INSERT INTO game_player (game_id, player_id, turn_order, is_out, joined_at, has_placed_ships) VALUES (:game_id, :player_id, :turn_order, 0, NOW(), 0)");
-        $stmt->execute([
-            ":game_id" => $game_id,
-            ":player_id" => $player_id,
-            ":turn_order" => $turn_order
-        ]);
 
+        // 4. Atomic Capacity Check: Count players already in the lobby
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM game_player WHERE game_id = ?");
+        $stmt->execute([$game_id]);
+        $player_count = $stmt->fetchColumn();
+
+        if ($player_count >= $game["max_players"]) {
+            $pdo->rollBack();
+            respond(["error" => "Game is full"], 400); // Fulfills "Joining full game returns 400" 
+        }
+
+        // 5. Calculate turn order (0-indexed)
+        $turn_order = (int)$player_count; 
+
+        // 6. Add player to game_player
+        $stmt = $pdo->prepare("INSERT INTO game_player (game_id, player_id, turn_order, is_out, joined_at, has_placed_ships) VALUES (?, ?, ?, 0, NOW(), 0)");
+        $stmt->execute([$game_id, $player_id, $turn_order]);
+
+        // 7. Success! Commit all changes at once
+        $pdo->commit();
         respond(["status" => "joined"]);
+
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("JOIN ERROR: " . $e->getMessage());
+        respond(["error" => "Failed to join game"], 500);
     }
 }
 
