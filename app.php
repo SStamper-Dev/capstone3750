@@ -138,8 +138,8 @@ if ($method === "POST" && $path === "/api/reset") {
 if ($method === "POST" && $path === "/api/players") {
     $data = json_input();
 
-    if (!isset($data["username"]) || trim($data["username"]) === "") {
-        respond(["error" => "Username required"], 400);
+    if (!isset($data["username"]) || trim($data["username"]) === "" || !preg_match("/^[a-zA-Z0-9_]+$/", $data["username"])) {
+        respond(["error" => "Username must be alphanumeric with underscores only"], 400);
     }
 
     try {
