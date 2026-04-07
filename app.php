@@ -666,9 +666,29 @@ if ($method === "GET" &&
     respond(["board" => $board]);
 }
 
+/* ===========================
+   METADATA
+=========================== */
+
 // GET /api/
 if ($method === "GET" && $path === "/api/") {
     respond($metadata,200);
+}
+
+// GET /api/version
+if ($method === "GET" && $path === "/api/version") {
+    respond([
+        "api_version" => $metadata["version"],
+        "spec_version" => $metadata["spec_version"]
+    ],200);
+}
+
+// GET /api/health
+if ($method === "GET" && $path === "/api/health") {
+    respond([
+        "status" => "ok",
+        "uptime_seconds" => round(microtime(true) - $_SERVER["REQUEST_TIME_FLOAT"], 2)
+    ],200);
 }
 
 /* ===========================
