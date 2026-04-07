@@ -41,6 +41,15 @@ else{
 $TEST_MODE = true;
 $TEST_PASSWORD = "clemson-test-2026";
 
+//Metadata
+$metadata = [
+    "name" => "Battleship API",
+    "version" => "1.1.0",
+    "spec_version" => "1.1.0",
+    "environment" => "production",
+    "test_mode" => $TEST_MODE
+];
+
 try {
     $dsn = "mysql:host=$DB_HOST;port=$DB_PORT;dbname=$DB_NAME;charset=utf8mb4";
     $pdo = new PDO($dsn, $DB_USER, $DB_PASS, [
@@ -655,6 +664,11 @@ if ($method === "GET" &&
     }, $board);
 
     respond(["board" => $board]);
+}
+
+// GET /api/
+if ($method === "GET" && $path === "/api/") {
+    respond($metadata,200);
 }
 
 /* ===========================
