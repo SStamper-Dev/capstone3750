@@ -220,6 +220,10 @@ if ($method === "POST" && $path === "/api/games") {
             ":max_players" => $data["max_players"]
         ]);
         $game_id = $pdo->lastInsertId();
+        $game_status = $pdo->prepare("SELECT status FROM game WHERE game_id = :game_id");
+        $game_status->execute([":game_id" => $game_id]);
+        $game_status = $game_status->fetchColumn();
+
 
         // Add creator as first player in game_player table with turn_order 0
         $stmt = $pdo->prepare("INSERT INTO game_player (game_id, player_id, turn_order, is_out, joined_at, has_placed_ships) VALUES (:game_id, :player_id, 0, 0, NOW(), 0)");
@@ -228,7 +232,10 @@ if ($method === "POST" && $path === "/api/games") {
             ":player_id" => $data["creator_id"]
         ]);
         $pdo->commit();
-        respond(["game_id" => (int)$game_id], 201);
+        respond([
+            "game_id" => (int)$game_id,
+            "status" => $game_status
+        ], 201);
     } catch(Exception $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
