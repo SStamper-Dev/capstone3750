@@ -212,7 +212,7 @@ if ($method === "POST" && $path === "/api/games") {
 
         $stmt = $pdo->prepare("
         INSERT INTO game (grid_size, status, current_turn_index, created_at, max_players)
-        VALUES (:grid_size, 'waiting', 0, NOW(), :max_players)
+        VALUES (:grid_size, 'waiting_setup', 0, NOW(), :max_players)
         ");
 
         $stmt->execute([
@@ -269,7 +269,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/join$#", $path, $m)) {
             respond(["error" => "Game not found"], 404);
         }
 
-        if ($game["status"] !== "waiting") {
+        if ($game["status"] !== "waiting_setup") {
             $pdo->rollBack();
             respond(["error" => "Game is not accepting players"], 400);
         }
@@ -622,8 +622,8 @@ if ($method === "POST" &&
     //reset game_player for game (set is_out to false, has_placed_ships to false, and joined_at to current timestamp)
     $stmt = $pdo->prepare("UPDATE game_player SET is_out = 0, has_placed_ships = 0, joined_at = NOW() WHERE game_id = :game_id");
     $stmt->execute([":game_id" => $game_id]);
-    //reset game status to waiting and current_turn_index to 0
-    $stmt = $pdo->prepare("UPDATE game SET status = 'waiting', current_turn_index = 0 WHERE game_id = :game_id");
+    //reset game status to waiting_setup and current_turn_index to 0
+    $stmt = $pdo->prepare("UPDATE game SET status = 'waiting_setup', current_turn_index = 0 WHERE game_id = :game_id");
     $stmt->execute([":game_id" => $game_id]);
 
     respond(["status" => "restarted"]);
@@ -724,11 +724,11 @@ function place_ships($pdo, $game_id, $data){
     if (count($data["ships"]) !== 3) {
         respond(["error" => "Exactly 3 ships required"], 400);
     }
-    //if game status is not waiting, return error
+    //if game status is not waiting_setup, return error
      $stmt = $pdo->prepare("SELECT status FROM game WHERE game_id = :game_id");
     $stmt->execute([":game_id" => $game_id]);
     $game_status = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($game_status["status"] !== "waiting") {
+    if ($game_status["status"] !== "waiting_setup") {
         respond(["error" => "Cannot place ships in a game that is not waiting"], 400);
     }
     
