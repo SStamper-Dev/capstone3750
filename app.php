@@ -86,7 +86,7 @@ function require_test_mode() {
     $headers = getallheaders();
     if (!isset($headers["X-Test-Password"]) ||
         $headers["X-Test-Password"] !== $TEST_PASSWORD) {
-        respond(["error" => "Forbidden"], 403);
+        respond(["error" => "Invalid test password"], 403);
     }
 }
 
@@ -658,7 +658,7 @@ if ($method === "POST" &&
     $stmt = $pdo->prepare("UPDATE game SET status = 'waiting_setup', current_turn_index = 0 WHERE game_id = :game_id");
     $stmt->execute([":game_id" => $game_id]);
 
-    respond(["status" => "restarted"]);
+    respond(["status" => "reset"]);
 }
 
 // POST /api/test/games/{id}/ships
