@@ -86,7 +86,7 @@ function require_test_mode() {
     $headers = getallheaders();
     if (!isset($headers["X-Test-Password"]) ||
         $headers["X-Test-Password"] !== $TEST_PASSWORD) {
-        respond(["error" => "Forbidden"], 403);
+        respond(["error" => "Invalid test password"], 403);
     }
 }
 
@@ -252,6 +252,12 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/join$#", $path, $m)) {
     if (!isset($data["player_id"])) {
         respond(["error" => "Player ID required"], 400);
     }
+    // 404 if player doens't exist
+    $stmt = $pdo->prepare("SELECT 1 FROM player WHERE player_id = :player_id");
+    $stmt->execute([":player_id" => $data["player_id"]]);
+    if (!$stmt->fetch()) {
+        respond(["error" => "Player not found"], 404);
+    }
 
     $player_id = (int)$data["player_id"];
 
@@ -332,6 +338,26 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)$#", $path, $m)) {
     if (!$game) {
         respond(["error" => "Game not found"], 404);
     } else {
+        // Get ships remaining per player (unhit ships only, 0 if all sunk)
+        $stmt = $pdo->prepare("
+            SELECT gp.player_id, COUNT(s.ship_id) AS ships_remaining
+            FROM game_player gp
+            LEFT JOIN ship s ON gp.player_id = s.player_id
+                AND s.game_id = :game_id
+                AND s.is_hit = 0
+            WHERE gp.game_id = :game_id
+            GROUP BY gp.player_id
+        ");
+        $stmt->execute([":game_id" => $game_id]);
+        $game["players"] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Get total moves made in this game
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM move WHERE game_id = :game_id
+        ");
+        $stmt->execute([":game_id" => $game_id]);
+        $game["total_moves"] = (int)$stmt->fetchColumn();
+
         respond($game);
     }
 }
@@ -380,7 +406,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
         if (!$player) respond(["error"=>"Player not in game"],404);
         if ($player["status"] !== "active") respond(["error"=>"Game not active"],400);
         if ($player["is_out"]) respond(["error"=>"Player eliminated"],400);
-        if ($player["current_turn_index"] != $player["turn_order"]) respond(["error"=>"Not your turn"],400);
+        if ($player["current_turn_index"] != $player["turn_order"]) respond(["error"=>"Not your turn"],403);
         /* ---------------------------------------
         Prevent shooting same location twice
         --------------------------------------- */
@@ -403,7 +429,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
 
         if ($stmt->fetch()) {
             $pdo->rollBack();
-            respond(["error" => "Location already targeted"], 400);
+            respond(["error" => "Location already targeted"], 409);
         }
         /* ---------------------------------------
            Increment total_shots
@@ -576,7 +602,8 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
         respond([
             "result" => $result,
             "next_player_id" => (int)$next_player_id,
-            "game_status" => "active"
+            "game_status" => "active",
+            "winner_id" => null
         ]);
     } catch (Exception $e) {
         if ($pdo->inTransaction()) {
@@ -591,7 +618,12 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)/moves$#", $path, $m)) {
     $game_id = $m[1]; // Extract game ID from URL
 
     $stmt = $pdo->prepare("
-        SELECT player_id, x_cord, y_cord, result, made_at
+        SELECT 
+            player_id, 
+            x_cord, y_cord, 
+            result, 
+            made_at,
+            ROW_NUMBER() OVER (ORDER BY made_at ASC) AS move_number
         FROM move
         WHERE game_id = :game_id
         ORDER BY made_at ASC
@@ -626,7 +658,7 @@ if ($method === "POST" &&
     $stmt = $pdo->prepare("UPDATE game SET status = 'waiting_setup', current_turn_index = 0 WHERE game_id = :game_id");
     $stmt->execute([":game_id" => $game_id]);
 
-    respond(["status" => "restarted"]);
+    respond(["status" => "reset"]);
 }
 
 // POST /api/test/games/{id}/ships
@@ -724,12 +756,21 @@ function place_ships($pdo, $game_id, $data){
     if (count($data["ships"]) !== 3) {
         respond(["error" => "Exactly 3 ships required"], 400);
     }
+
+    //check if player has already placed ships
+	$stmt = $pdo->prepare("SELECT has_placed_ships FROM game_player WHERE game_id = :game_id AND player_id = :player_id");
+	$stmt->execute([":game_id" => $game_id, ":player_id" => $data["player_id"]]);
+	$player = $stmt->fetch(PDO::FETCH_ASSOC);
+	if ($player && $player["has_placed_ships"]) {
+		respond(["error" => "Player has already placed ships"], 409);
+	}
+
     //if game status is not waiting_setup, return error
      $stmt = $pdo->prepare("SELECT status FROM game WHERE game_id = :game_id");
     $stmt->execute([":game_id" => $game_id]);
     $game_status = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($game_status["status"] !== "waiting_setup") {
-        respond(["error" => "Cannot place ships in a game that is not waiting"], 400);
+        respond(["error" => "Cannot place ships in a game that is not waiting"], 403);
     }
     
     //check that "row" and "col" are present for each ship, they are within the grid bounds, and that no two ships occupy the same cell
