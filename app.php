@@ -338,6 +338,26 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)$#", $path, $m)) {
     if (!$game) {
         respond(["error" => "Game not found"], 404);
     } else {
+        // Get ships remaining per player (unhit ships only, 0 if all sunk)
+        $stmt = $pdo->prepare("
+            SELECT gp.player_id, COUNT(s.ship_id) AS ships_remaining
+            FROM game_player gp
+            LEFT JOIN ship s ON gp.player_id = s.player_id
+                AND s.game_id = :game_id
+                AND s.is_hit = 0
+            WHERE gp.game_id = :game_id
+            GROUP BY gp.player_id
+        ");
+        $stmt->execute([":game_id" => $game_id]);
+        $game["players"] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Get total moves made in this game
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM move WHERE game_id = :game_id
+        ");
+        $stmt->execute([":game_id" => $game_id]);
+        $game["total_moves"] = (int)$stmt->fetchColumn();
+
         respond($game);
     }
 }
