@@ -252,6 +252,12 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/join$#", $path, $m)) {
     if (!isset($data["player_id"])) {
         respond(["error" => "Player ID required"], 400);
     }
+    // 404 if player doens't exist
+    $stmt = $pdo->prepare("SELECT 1 FROM player WHERE player_id = :player_id");
+    $stmt->execute([":player_id" => $data["player_id"]]);
+    if (!$stmt->fetch()) {
+        respond(["error" => "Player not found"], 404);
+    }
 
     $player_id = (int)$data["player_id"];
 
