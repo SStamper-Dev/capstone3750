@@ -406,7 +406,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
         if (!$player) respond(["error"=>"Player not in game"],404);
         if ($player["status"] !== "active") respond(["error"=>"Game not active"],400);
         if ($player["is_out"]) respond(["error"=>"Player eliminated"],400);
-        if ($player["current_turn_index"] != $player["turn_order"]) respond(["error"=>"Not your turn"],400);
+        if ($player["current_turn_index"] != $player["turn_order"]) respond(["error"=>"Not your turn"],403);
         /* ---------------------------------------
         Prevent shooting same location twice
         --------------------------------------- */
@@ -429,7 +429,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
 
         if ($stmt->fetch()) {
             $pdo->rollBack();
-            respond(["error" => "Location already targeted"], 400);
+            respond(["error" => "Location already targeted"], 409);
         }
         /* ---------------------------------------
            Increment total_shots
@@ -602,7 +602,8 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
         respond([
             "result" => $result,
             "next_player_id" => (int)$next_player_id,
-            "game_status" => "active"
+            "game_status" => "active",
+            "winner_id" => null
         ]);
     } catch (Exception $e) {
         if ($pdo->inTransaction()) {
