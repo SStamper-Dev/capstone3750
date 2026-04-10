@@ -618,7 +618,12 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)/moves$#", $path, $m)) {
     $game_id = $m[1]; // Extract game ID from URL
 
     $stmt = $pdo->prepare("
-        SELECT player_id, x_cord, y_cord, result, made_at
+        SELECT 
+            player_id, 
+            x_cord, y_cord, 
+            result, 
+            made_at,
+            ROW_NUMBER() OVER (ORDER BY made_at ASC) AS move_number
         FROM move
         WHERE game_id = :game_id
         ORDER BY made_at ASC
