@@ -685,6 +685,13 @@ if ($method === "GET" &&
     }
     $grid_size = $game["grid_size"];
 
+    // Check if player is in the game
+	$stmt = $pdo->prepare("SELECT 1 FROM game_player WHERE game_id = :game_id AND player_id = :player_id");
+	$stmt->execute([":game_id" => $game_id, ":player_id" => $player_id]);
+	if (!$stmt->fetch()) {
+		respond(["error" => "Player not found in game"], 404);
+	}
+
     // Get ships for the player
     $stmt = $pdo->prepare("SELECT x_cord, y_cord, is_hit FROM ship WHERE game_id = :game_id AND player_id = :player_id");
     $stmt->execute([":game_id" => $game_id, ":player_id" => $player_id]);
