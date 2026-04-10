@@ -750,12 +750,21 @@ function place_ships($pdo, $game_id, $data){
     if (count($data["ships"]) !== 3) {
         respond(["error" => "Exactly 3 ships required"], 400);
     }
+
+    //check if player has already placed ships
+	$stmt = $pdo->prepare("SELECT has_placed_ships FROM game_player WHERE game_id = :game_id AND player_id = :player_id");
+	$stmt->execute([":game_id" => $game_id, ":player_id" => $data["player_id"]]);
+	$player = $stmt->fetch(PDO::FETCH_ASSOC);
+	if ($player && $player["has_placed_ships"]) {
+		respond(["error" => "Player has already placed ships"], 409);
+	}
+
     //if game status is not waiting_setup, return error
      $stmt = $pdo->prepare("SELECT status FROM game WHERE game_id = :game_id");
     $stmt->execute([":game_id" => $game_id]);
     $game_status = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($game_status["status"] !== "waiting_setup") {
-        respond(["error" => "Cannot place ships in a game that is not waiting"], 400);
+        respond(["error" => "Cannot place ships in a game that is not waiting"], 403);
     }
     
     //check that "row" and "col" are present for each ship, they are within the grid bounds, and that no two ships occupy the same cell
