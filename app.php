@@ -195,12 +195,15 @@ if ($method === "GET" && preg_match("#^/api/players/(\d+)/stats$#", $path, $m)) 
 if ($method === "POST" && $path === "/api/games") {
     $data = json_input();
 
+    $grid_min = 5;
+    $grid_max = 15;
+
     if (!isset($data["creator_id"], $data["grid_size"], $data["max_players"])) {
         respond(["error" => "Missing fields"], 400);
     }
 
-    if ($data["grid_size"] < 5 || $data["grid_size"] > 15) {
-        respond(["error" => "Invalid grid size"], 400);
+    if ($data["grid_size"] < $grid_min || $data["grid_size"] > $grid_max) {
+        respond(["error" => "Grid size must be between $grid_min and $grid_max"], 400);
     }
 
     if ($data["max_players"] < 1) {
