@@ -321,6 +321,19 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/join$#", $path, $m)) {
     }
 }
 
+// GET /api/games - List all games for the Lobby
+if ($method === "GET" && $path === "/api/games") {
+    $stmt = $pdo->prepare("
+        SELECT g.game_id, g.grid_size, g.status, COUNT(gp.player_id) as current_players, g.max_players
+        FROM game g
+        LEFT JOIN game_player gp ON g.game_id = gp.game_id
+        GROUP BY g.game_id
+        ORDER BY g.created_at DESC
+    ");
+    $stmt->execute();
+    respond($stmt->fetchAll(PDO::FETCH_ASSOC));
+}
+
 // GET /api/games/{id}
 if ($method === "GET" && preg_match("#^/api/games/(\d+)$#", $path, $m)) {
     $game_id = $m[1]; // Extract game ID from URL
