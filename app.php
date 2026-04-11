@@ -407,7 +407,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
         ]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$player) respond(["error"=>"Player not in game"],404);
-        if ($player["status"] !== "active") respond(["error"=>"Game not active"],400);
+        if ($player["status"] !== "playing") respond(["error"=>"Game not active"],400);
         if ($player["is_out"]) respond(["error"=>"Player eliminated"],400);
         if ($player["current_turn_index"] != $player["turn_order"]) respond(["error"=>"Not your turn"],403);
         /* ---------------------------------------
@@ -432,7 +432,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
 
         if ($stmt->fetch()) {
             $pdo->rollBack();
-            respond(["error" => "Location already targeted"], 409);
+            respond(["error" => "Cell already fired upon"], 409);
         }
         /* ---------------------------------------
            Increment total_shots
@@ -623,9 +623,9 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)/moves$#", $path, $m)) {
     $stmt = $pdo->prepare("
         SELECT 
             player_id, 
-            x_cord, y_cord, 
+            x_cord AS `row`, y_cord AS `column`, 
             result, 
-            made_at,
+            made_at as timestamp,
             ROW_NUMBER() OVER (ORDER BY made_at ASC) AS move_number
         FROM move
         WHERE game_id = :game_id
@@ -772,7 +772,7 @@ function place_ships($pdo, $game_id, $data){
 	$stmt->execute([":game_id" => $game_id, ":player_id" => $data["player_id"]]);
 	$player = $stmt->fetch(PDO::FETCH_ASSOC);
 	if ($player && $player["has_placed_ships"]) {
-		respond(["error" => "Player has already placed ships"], 409);
+		respond(["error" => "Ships already placed"], 409);
 	}
 
     //if game status is not waiting_setup, return error
@@ -780,7 +780,7 @@ function place_ships($pdo, $game_id, $data){
     $stmt->execute([":game_id" => $game_id]);
     $game_status = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($game_status["status"] !== "waiting_setup") {
-        respond(["error" => "Cannot place ships in a game that is not waiting"], 403);
+        respond(["error" => "Not in setup phase"], 403);
     }
     
     //check that "row" and "col" are present for each ship, they are within the grid bounds, and that no two ships occupy the same cell
