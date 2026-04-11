@@ -199,7 +199,7 @@ if ($method === "POST" && $path === "/api/games") {
     $grid_max = 15;
 
     if (!isset($data["creator_id"], $data["grid_size"], $data["max_players"])) {
-        respond(["error" => "Missing fields"], 400);
+        respond(["error" => "Missing required fields"], 400);
     }
 
     if ($data["grid_size"] < $grid_min || $data["grid_size"] > $grid_max) {
@@ -712,7 +712,7 @@ if ($method === "GET" &&
         return implode(" ", $row);
     }, $board);
 
-    respond(["board" => $board]);
+    respond(["game_id" => $game_id, "player_id" => $player_id, "board" => $board]);
 }
 
 /* ===========================
