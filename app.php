@@ -195,12 +195,15 @@ if ($method === "GET" && preg_match("#^/api/players/(\d+)/stats$#", $path, $m)) 
 if ($method === "POST" && $path === "/api/games") {
     $data = json_input();
 
+    $grid_min = 5;
+    $grid_max = 15;
+
     if (!isset($data["creator_id"], $data["grid_size"], $data["max_players"])) {
-        respond(["error" => "Missing fields"], 400);
+        respond(["error" => "Missing required fields"], 400);
     }
 
-    if ($data["grid_size"] < 5 || $data["grid_size"] > 15) {
-        respond(["error" => "Invalid grid size"], 400);
+    if ($data["grid_size"] < $grid_min || $data["grid_size"] > $grid_max) {
+        respond(["error" => "Grid size must be between $grid_min and $grid_max"], 400);
     }
 
     if ($data["max_players"] < 1) {
@@ -602,7 +605,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
         respond([
             "result" => $result,
             "next_player_id" => (int)$next_player_id,
-            "game_status" => "active",
+            "game_status" => "playing",
             "winner_id" => null
         ]);
     } catch (Exception $e) {
@@ -685,6 +688,13 @@ if ($method === "GET" &&
     }
     $grid_size = $game["grid_size"];
 
+    // Check if player is in the game
+	$stmt = $pdo->prepare("SELECT 1 FROM game_player WHERE game_id = :game_id AND player_id = :player_id");
+	$stmt->execute([":game_id" => $game_id, ":player_id" => $player_id]);
+	if (!$stmt->fetch()) {
+		respond(["error" => "Player not found in game"], 404);
+	}
+
     // Get ships for the player
     $stmt = $pdo->prepare("SELECT x_cord, y_cord, is_hit FROM ship WHERE game_id = :game_id AND player_id = :player_id");
     $stmt->execute([":game_id" => $game_id, ":player_id" => $player_id]);
@@ -702,7 +712,7 @@ if ($method === "GET" &&
         return implode(" ", $row);
     }, $board);
 
-    respond(["board" => $board]);
+    respond(["game_id" => $game_id, "player_id" => $player_id, "board" => $board]);
 }
 
 /* ===========================
@@ -829,7 +839,7 @@ function place_ships($pdo, $game_id, $data){
     $max_players = $stmt->fetchColumn();
 
     if ($still_waiting == 0 && $current_players == $max_players) {
-        $stmt = $pdo->prepare("UPDATE game SET status = 'active' WHERE game_id = ?");
+        $stmt = $pdo->prepare("UPDATE game SET status = 'playing' WHERE game_id = ?");
         $stmt->execute([$game_id]);
     }
 
