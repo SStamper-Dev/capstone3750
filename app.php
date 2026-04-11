@@ -843,5 +843,5 @@ function place_ships($pdo, $game_id, $data){
         $stmt->execute([$game_id]);
     }
 
-    respond(["status" => "ships placed"]);
+    respond(["status" => "placed"]);
 }
