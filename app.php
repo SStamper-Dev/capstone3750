@@ -139,7 +139,7 @@ if ($method === "POST" && $path === "/api/players") {
     $data = json_input();
 
     if (!isset($data["username"]) || trim($data["username"]) === "" || !preg_match("/^[a-zA-Z0-9_]+$/", $data["username"])) {
-        respond(["error" => "Username must be alphanumeric with underscores only"], 400);
+        respond(["error" => "bad_request", "message" => "Username must be alphanumeric with underscores only"], 400);
     }
 
     try {
@@ -179,7 +179,7 @@ if ($method === "GET" && preg_match("#^/api/players/(\d+)/stats$#", $path, $m)) 
     $stats = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$stats) {
-        respond(["error" => "Player not found"], 404);
+        respond(["error" => "not_found", "message" => "Player not found"], 404);
     }
     else{
         //add total_wins and total_losses and save it in response as games_played
@@ -199,15 +199,15 @@ if ($method === "POST" && $path === "/api/games") {
     $grid_max = 15;
 
     if (!isset($data["creator_id"], $data["grid_size"], $data["max_players"])) {
-        respond(["error" => "Missing required fields"], 400);
+        respond(["error" => "bad_request", "message" => "Missing required fields"], 400);
     }
 
     if ($data["grid_size"] < $grid_min || $data["grid_size"] > $grid_max) {
-        respond(["error" => "Grid size must be between $grid_min and $grid_max"], 400);
+        respond(["error" => "bad_request", "message" => "Grid size must be between $grid_min and $grid_max"], 400);
     }
 
     if ($data["max_players"] < 1) {
-        respond(["error" => "Invalid max players"], 400);
+        respond(["error" => "bad_request", "message" => "Invalid max players"], 400);
     }
 
     try {
@@ -253,13 +253,13 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/join$#", $path, $m)) {
     $data = json_input();
     
     if (!isset($data["player_id"])) {
-        respond(["error" => "Player ID required"], 400);
+        respond(["error" => "bad_request", "message" => "Player ID required"], 400);
     }
     // 404 if player doens't exist
     $stmt = $pdo->prepare("SELECT 1 FROM player WHERE player_id = :player_id");
     $stmt->execute([":player_id" => $data["player_id"]]);
     if (!$stmt->fetch()) {
-        respond(["error" => "Player not found"], 404);
+        respond(["error" => "not_found", "message" => "Player does not exist"], 404);
     }
 
     $player_id = (int)$data["player_id"];
@@ -275,12 +275,12 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/join$#", $path, $m)) {
 
         if (!$game) {
             $pdo->rollBack();
-            respond(["error" => "Game not found"], 404);
+            respond(["error" => "not_found", "message" => "Game does not exist"], 404);
         }
 
         if ($game["status"] !== "waiting_setup") {
             $pdo->rollBack();
-            respond(["error" => "Game is not accepting players"], 400);
+            respond(["error" => "bad_request", "message" => "Game is not accepting players"], 400);
         }
 
         // 3. Check if player is already in the game
@@ -288,7 +288,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/join$#", $path, $m)) {
         $stmt->execute([$game_id, $player_id]);
         if ($stmt->fetch()) {
             $pdo->rollBack();
-            respond(["error" => "Player already in game"], 400);
+            respond(["error" => "bad_request", "message" => "Player already in game"], 400);
         }
 
         // 4. Atomic Capacity Check: Count players already in the lobby
@@ -298,7 +298,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/join$#", $path, $m)) {
 
         if ($player_count >= $game["max_players"]) {
             $pdo->rollBack();
-            respond(["error" => "Game is full"], 400); // Fulfills "Joining full game returns 400" 
+            respond(["error" => "bad_request", "message" => "Game is full"], 400); // Fulfills "Joining full game returns 400" 
         }
 
         // 5. Calculate turn order (0-indexed)
@@ -329,17 +329,14 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)$#", $path, $m)) {
             g.game_id,
             g.grid_size,
             g.status,
-            g.current_turn_index,
-            COUNT(gp.player_id) AS active_players
+            g.current_turn_index
             FROM game g
-            LEFT JOIN game_player gp ON g.game_id = gp.game_id
-            WHERE g.game_id = :game_id
-            GROUP BY g.game_id");
+            WHERE g.game_id = :game_id");
     $stmt->execute([":game_id" => $game_id]);
     $game = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$game) {
-        respond(["error" => "Game not found"], 404);
+        respond(["error" => "not_found", "message" => "Game does not exist"], 404);
     } else {
         // Get ships remaining per player (unhit ships only, 0 if all sunk)
         $stmt = $pdo->prepare("
@@ -352,7 +349,8 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)$#", $path, $m)) {
             GROUP BY gp.player_id
         ");
         $stmt->execute([":game_id" => $game_id]);
-        $game["players"] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $players = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $game["players"] = $players;
 
         // Get total moves made in this game
         $stmt = $pdo->prepare("
@@ -361,6 +359,25 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)$#", $path, $m)) {
         $stmt->execute([":game_id" => $game_id]);
         $game["total_moves"] = (int)$stmt->fetchColumn();
 
+        // Get active players count
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM game_player WHERE game_id = :game_id
+        ");
+        $stmt->execute([":game_id" => $game_id]);
+        $game["active_players"] = (int)$stmt->fetchColumn();
+
+        // Get current turn player id
+        $game["current_turn_player_id"] = null;
+        if ($game["status"] !== "finished") {
+            $stmt = $pdo->prepare("
+                SELECT player_id FROM game_player WHERE game_id = :game_id AND turn_order = :turn_order
+            ");
+            $stmt->execute([":game_id" => $game_id, ":turn_order" => $game["current_turn_index"]]);
+            $current_player = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($current_player) {
+                $game["current_turn_player_id"] = (int)$current_player["player_id"];
+            }
+        }
         respond($game);
     }
 }
@@ -375,7 +392,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
     $data = json_input();
     $game_id = (int)$m[1];
     if (!isset($data["player_id"], $data["row"], $data["col"])) {
-        respond(["error" => "Invalid request"], 400);
+        respond(["error" => "bad_request", "message" => "Invalid request"], 400);
     }
     $player_id = (int)$data["player_id"];
     $row = (int)$data["row"];
@@ -384,10 +401,10 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
     $stmt = $pdo->prepare("SELECT grid_size FROM game WHERE game_id = :game_id");
     $stmt->execute([":game_id" => $game_id]);
     $game_info = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$game_info) respond(["error" => "Game not found"], 404);
+    if (!$game_info) respond(["error" => "not_found", "message" => "Game does not exist"], 404);
 
     if($row < 0 || $row >= $game_info["grid_size"] || $col < 0 || $col >= $game_info["grid_size"]) {
-        respond(["error" => "Shot coordinates out of bounds"], 400);
+        respond(["error" => "bad_request", "message" => "Shot coordinates out of bounds"], 400);
     }
 
     try {
@@ -406,10 +423,10 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
             ":player_id" => $player_id
         ]);
         $player = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$player) respond(["error"=>"Player not in game"],404);
-        if ($player["status"] !== "playing") respond(["error"=>"Game not active"],400);
-        if ($player["is_out"]) respond(["error"=>"Player eliminated"],400);
-        if ($player["current_turn_index"] != $player["turn_order"]) respond(["error"=>"Not your turn"],403);
+        if (!$player) respond(["error"=>"not_found", "message"=>"Player not in game"],404);
+        if ($player["status"] !== "playing") respond(["error"=>"bad_request", "message"=>"Game not active"],400);
+        if ($player["is_out"]) respond(["error"=>"bad_request", "message"=>"Player eliminated"],400);
+        if ($player["current_turn_index"] != $player["turn_order"]) respond(["error"=>"forbidden", "message"=>"Not your turn"],403);
         /* ---------------------------------------
         Prevent shooting same location twice
         --------------------------------------- */
@@ -432,7 +449,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
 
         if ($stmt->fetch()) {
             $pdo->rollBack();
-            respond(["error" => "Cell already fired upon"], 409);
+            respond(["error" => "conflict", "message" => "Cell already fired upon"], 409);
         }
         /* ---------------------------------------
            Increment total_shots
@@ -760,11 +777,11 @@ function place_ships($pdo, $game_id, $data){
     // $data = json_input(); (already done in caller)
 
     if (!isset($data["player_id"], $data["ships"])) {
-        respond(["error" => "Invalid request"], 400);
+        respond(["error" => "bad_request", "message" => "Invalid request"], 400);
     }
 
     if (count($data["ships"]) !== 3) {
-        respond(["error" => "Exactly 3 ships required"], 400);
+        respond(["error" => "bad_request", "message" => "Exactly 3 ships required"], 400);
     }
 
     //check if player has already placed ships
@@ -772,7 +789,7 @@ function place_ships($pdo, $game_id, $data){
 	$stmt->execute([":game_id" => $game_id, ":player_id" => $data["player_id"]]);
 	$player = $stmt->fetch(PDO::FETCH_ASSOC);
 	if ($player && $player["has_placed_ships"]) {
-		respond(["error" => "Ships already placed"], 409);
+		respond(["error" => "conflict", "message" => "Ships already placed"], 409);
 	}
 
     //if game status is not waiting_setup, return error
@@ -780,7 +797,7 @@ function place_ships($pdo, $game_id, $data){
     $stmt->execute([":game_id" => $game_id]);
     $game_status = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($game_status["status"] !== "waiting_setup") {
-        respond(["error" => "Not in setup phase"], 403);
+        respond(["error" => "forbidden", "message" => "Not in setup phase"], 403);
     }
     
     //check that "row" and "col" are present for each ship, they are within the grid bounds, and that no two ships occupy the same cell
@@ -792,14 +809,14 @@ function place_ships($pdo, $game_id, $data){
     
     foreach ($data["ships"] as $ship) {
         if (!isset($ship["row"], $ship["col"])) {
-            respond(["error" => "Each ship must have row and col"], 400);
+            respond(["error" => "bad_request", "message" => "Each ship must have row and col"], 400);
         }
         if ($ship["row"] < 0 || $ship["row"] >= $game["grid_size"] || $ship["col"] < 0 || $ship["col"] >= $game["grid_size"]) {
-            respond(["error" => "Ship positions must be within grid bounds"], 400);
+            respond(["error" => "bad_request", "message" => "Ship positions must be within grid bounds"], 400);
         }
         $pos_key = $ship["row"] . "," . $ship["col"];
         if (in_array($pos_key, $positions)) {
-            respond(["error" => "Ships cannot occupy the same cell"], 400);
+            respond(["error" => "bad_request", "message" => "Ships cannot occupy the same cell"], 400);
         }
         $positions[] = $pos_key;
     }
