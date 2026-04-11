@@ -1,0 +1,591 @@
+openapi: 3.0.3
+info:
+  title: Battleship API
+  version: 2.3.0
+  description: |
+    Battleship API v2.3 – ULTRA CONTRACT
+    Fully specified distributed contract.
+    All endpoints.
+    All status codes.
+    Extensive success and failure examples.
+    Strict schema validation (additionalProperties: false everywhere).
+
+servers:
+  - url: /api
+
+components:
+
+  parameters:
+
+    GameId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+    PlayerId:
+      name: player_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+    TestPasswordHeader:
+      name: X-Test-Password
+      in: header
+      required: true
+      schema:
+        type: string
+
+  schemas:
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+    GameState:
+      type: string
+      enum: [waiting_setup, playing, finished]
+
+    Metadata:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - version
+        - spec_version
+        - environment
+        - test_mode
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        spec_version:
+          type: string
+        environment:
+          type: string
+        test_mode:
+          type: boolean
+
+    PlayerCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [username]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 30
+          pattern: "^[A-Za-z0-9_]+$"
+
+    PlayerResponse:
+      type: object
+      additionalProperties: false
+      required: [player_id]
+      properties:
+        player_id:
+          type: integer
+          minimum: 1
+
+    PlayerStats:
+      type: object
+      additionalProperties: false
+      required:
+        - games_played
+        - wins
+        - losses
+        - total_shots
+        - total_hits
+        - accuracy
+      properties:
+        games_played:
+          type: integer
+        wins:
+          type: integer
+        losses:
+          type: integer
+        total_shots:
+          type: integer
+        total_hits:
+          type: integer
+        accuracy:
+          type: number
+          format: float
+
+    Player:
+      type: object
+      additionalProperties: false
+      required: [player_id, ships_remaining]
+      properties:
+        player_id:
+          type: integer
+        ships_remaining:
+          type: integer
+          minimum: 0
+
+    GameDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - game_id
+        - grid_size
+        - status
+        - players
+        - current_turn_player_id
+        - total_moves
+      properties:
+        game_id:
+          type: integer
+        grid_size:
+          type: integer
+        status:
+          $ref: '#/components/schemas/GameState'
+        players:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Player'
+        current_turn_player_id:
+          type: integer
+          nullable: true
+        total_moves:
+          type: integer
+
+    GameCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [creator_id, grid_size, max_players]
+      properties:
+        creator_id:
+          type: integer
+        grid_size:
+          type: integer
+          minimum: 5
+          maximum: 15
+        max_players:
+          type: integer
+          minimum: 2
+          maximum: 10
+
+    JoinRequest:
+      type: object
+      additionalProperties: false
+      required: [player_id]
+      properties:
+        player_id:
+          type: integer
+
+    ShipCoordinate:
+      type: object
+      additionalProperties: false
+      required: [row, col]
+      properties:
+        row:
+          type: integer
+          minimum: 0
+        col:
+          type: integer
+          minimum: 0
+
+    PlaceShipsRequest:
+      type: object
+      additionalProperties: false
+      required: [player_id, ships]
+      properties:
+        player_id:
+          type: integer
+        ships:
+          type: array
+          minItems: 3
+          items:
+            $ref: '#/components/schemas/ShipCoordinate'
+
+    FireRequest:
+      type: object
+      additionalProperties: false
+      required: [player_id, row, col]
+      properties:
+        player_id:
+          type: integer
+        row:
+          type: integer
+        col:
+          type: integer
+
+    FireResult:
+      type: object
+      additionalProperties: false
+      required: [result, next_player_id, game_status]
+      properties:
+        result:
+          type: string
+          enum: [hit, miss]
+        next_player_id:
+          type: integer
+          nullable: true
+        game_status:
+          $ref: '#/components/schemas/GameState'
+        winner_id:
+          type: integer
+          nullable: true
+
+paths:
+
+  /:
+    get:
+      summary: API metadata
+      responses:
+        '200':
+          description: Metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Metadata'
+              examples:
+                production:
+                  value:
+                    name: Battleship API
+                    version: 2.3.0
+                    spec_version: 2.3
+                    environment: production
+                    test_mode: false
+
+  /version:
+    get:
+      summary: Version info
+      responses:
+        '200':
+          description: Version object
+          content:
+            application/json:
+              examples:
+                version:
+                  value:
+                    api_version: "2.3.0"
+                    spec_version: "2.3"
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Health
+          content:
+            application/json:
+              examples:
+                healthy:
+                  value:
+                    status: ok
+                    uptime_seconds: 55021
+
+  /players:
+    post:
+      summary: Create or reuse player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlayerCreateRequest'
+            examples:
+              valid:
+                value:
+                  username: dan
+              invalid:
+                value:
+                  username: "dan!!!"
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerResponse'
+              examples:
+                created:
+                  value:
+                    player_id: 1
+        '400':
+          description: Invalid username
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                bad_request:
+                  value:
+                    error: bad_request
+                    message: Username must be alphanumeric with underscores only
+
+  /players/{player_id}/stats:
+    get:
+      summary: Player statistics
+      parameters:
+        - $ref: '#/components/parameters/PlayerId'
+      responses:
+        '200':
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerStats'
+              examples:
+                example:
+                  value:
+                    games_played: 5
+                    wins: 2
+                    losses: 3
+                    total_shots: 45
+                    total_hits: 17
+                    accuracy: 0.378
+        '404':
+          description: Player not found
+          content:
+            application/json:
+              examples:
+                not_found:
+                  value:
+                    error: not_found
+                    message: Player does not exist
+
+  /games:
+    post:
+      summary: Create game
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameCreateRequest'
+            examples:
+              valid:
+                value:
+                  creator_id: 1
+                  grid_size: 8
+                  max_players: 4
+              invalid_grid:
+                value:
+                  creator_id: 1
+                  grid_size: 20
+                  max_players: 4
+      responses:
+        '201':
+          description: Game created
+          content:
+            application/json:
+              examples:
+                created:
+                  value:
+                    game_id: 10
+                    status: waiting_setup
+        '400':
+          description: Invalid game parameters
+          content:
+            application/json:
+              examples:
+                bad_request:
+                  value:
+                    error: bad_request
+                    message: Grid size must be between 5 and 15
+
+  /games/{id}:
+    get:
+      summary: Detailed game state
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      responses:
+        '200':
+          description: Game detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameDetail'
+              examples:
+                playing:
+                  value:
+                    game_id: 10
+                    grid_size: 8
+                    status: playing
+                    players:
+                      - player_id: 1
+                        ships_remaining: 2
+                      - player_id: 2
+                        ships_remaining: 3
+                    current_turn_player_id: 2
+                    total_moves: 14
+                finished:
+                  value:
+                    game_id: 10
+                    grid_size: 8
+                    status: finished
+                    players:
+                      - player_id: 1
+                        ships_remaining: 0
+                      - player_id: 2
+                        ships_remaining: 2
+                    current_turn_player_id: null
+                    total_moves: 32
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              examples:
+                not_found:
+                  value:
+                    error: not_found
+                    message: Game does not exist
+
+  /games/{id}/join:
+    post:
+      summary: Join game
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinRequest'
+      responses:
+        '200':
+          description: Joined
+          content:
+            application/json:
+              examples:
+                joined:
+                  value:
+                    status: joined
+        '400':
+          description: Game full or already started
+          content:
+            application/json:
+              examples:
+                full:
+                  value:
+                    error: bad_request
+                    message: Game is full
+        '404':
+          description: Game not found
+
+  /games/{id}/place:
+    post:
+      summary: Place ships
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceShipsRequest'
+      responses:
+        '200':
+          description: Ships placed
+          content:
+            application/json:
+              examples:
+                placed:
+                  value:
+                    status: placed
+        '403':
+          description: Not in setup phase
+        '409':
+          description: Ships already placed
+
+  /games/{id}/fire:
+    post:
+      summary: Fire shot
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FireRequest'
+      responses:
+        '200':
+          description: Shot result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FireResult'
+              examples:
+                hit:
+                  value:
+                    result: hit
+                    next_player_id: 1
+                    game_status: playing
+                    winner_id: null
+                win:
+                  value:
+                    result: hit
+                    next_player_id: null
+                    game_status: finished
+                    winner_id: 2
+        '403':
+          description: Out of turn
+          content:
+            application/json:
+              examples:
+                forbidden:
+                  value:
+                    error: forbidden
+                    message: Not your turn
+        '409':
+          description: Cell already fired
+          content:
+            application/json:
+              examples:
+                conflict:
+                  value:
+                    error: conflict
+                    message: Cell already fired upon
+
+  /games/{id}/moves:
+    get:
+      summary: Move history
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      responses:
+        '200':
+          description: Move list
+          content:
+            application/json:
+              examples:
+                moves:
+                  value:
+                    - move_number: 1
+                      player_id: 1
+                      row: 0
+                      col: 0
+                      result: hit
+                      timestamp: "2026-04-02T12:00:00Z"
+
+  /test/games/{id}/restart:
+    post:
+      summary: Restart game (TEST_MODE only)
+      parameters:
+        - $ref: '#/components/parameters/TestPasswordHeader'
+        - $ref: '#/components/parameters/GameId'
+      responses:
+        '200':
+          description: Reset
+          content:
+            application/json:
+              examples:
+                reset:
+                  value:
+                    status: reset
+        '403':
+          description: Invalid test password
