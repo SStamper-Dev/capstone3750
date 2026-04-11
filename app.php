@@ -605,7 +605,7 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
         respond([
             "result" => $result,
             "next_player_id" => (int)$next_player_id,
-            "game_status" => "active",
+            "game_status" => "playing",
             "winner_id" => null
         ]);
     } catch (Exception $e) {
@@ -839,7 +839,7 @@ function place_ships($pdo, $game_id, $data){
     $max_players = $stmt->fetchColumn();
 
     if ($still_waiting == 0 && $current_players == $max_players) {
-        $stmt = $pdo->prepare("UPDATE game SET status = 'active' WHERE game_id = ?");
+        $stmt = $pdo->prepare("UPDATE game SET status = 'playing' WHERE game_id = ?");
         $stmt->execute([$game_id]);
     }
 
