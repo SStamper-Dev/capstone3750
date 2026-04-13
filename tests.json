@@ -20,7 +20,8 @@
       "headers": {"X-Test-Password": "clemson-test-2026"},
       "body": null,
       "expected_status": 200,
-      "expected_response_contains": { "status": "reset" } 
+      "expected_response_contains": { "status": "reset" },
+      "requires": "game_created" 
     },
     {
       "name": "Player joins same game twice",
@@ -30,7 +31,8 @@
       "headers": {},
       "body": { "player_id": 1 },
       "expected_status": 400,
-      "expected_response_contains": { "error": "bad_request" }
+      "expected_response_contains": { "error": "bad_request" },
+      "requires": "game_joined"
     },
     {
       "name": "Place ship at valid game's borders",
@@ -47,7 +49,9 @@
                 ]
             },
       "expected_status": 200,
-      "expected_response_contains": { "status": "placed" }
+      "expected_response_contains": { "status": "placed" },
+      "requires": "game_joined"
+
     },
     {
       "name": "Check new, valid game is initialized properly",
@@ -63,7 +67,8 @@
                 "status": "waiting_setup",
                 "current_turn_index": 0,
                 "active_players": 1
-            }
+            },
+      "requires": "game_created"
     }
   ]
 }
