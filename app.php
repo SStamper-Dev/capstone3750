@@ -334,6 +334,19 @@ if ($method === "GET" && $path === "/api/games") {
     respond($stmt->fetchAll(PDO::FETCH_ASSOC));
 }
 
+// GET /api/players/{id}/games - My Active Games (Non-standard/Safe)
+if ($method === "GET" && preg_match("#^/api/players/(\d+)/games$#", $path, $m)) {
+    $player_id = (int)$m[1];
+    $stmt = $pdo->prepare("
+        SELECT g.game_id, g.status 
+        FROM game g
+        JOIN game_player gp ON g.game_id = gp.game_id
+        WHERE gp.player_id = :player_id
+    ");
+    $stmt->execute([":player_id" => $player_id]);
+    respond($stmt->fetchAll(PDO::FETCH_ASSOC));
+}
+
 // GET /api/games/{id}
 if ($method === "GET" && preg_match("#^/api/games/(\d+)$#", $path, $m)) {
     $game_id = $m[1]; // Extract game ID from URL
