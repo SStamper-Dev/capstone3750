@@ -1,0 +1,78 @@
+{
+  "team_name": "Team0x10",
+  "api_version": "2.3",
+  "tests": [
+    {
+      "name": "Force username",
+      "why": "Ensures all players have a username.",
+      "method": "POST",
+      "endpoint": "/api/players",
+      "headers": {},
+      "body": { "username": "" },
+      "expected_status": 400,
+      "expected_response_contains": { "error": true }
+    },
+    {
+      "name": "Show board state for valid game's valid player",
+      "why": "Allows visualization of the board.",
+      "method": "GET",
+      "endpoint": "/api/test/games/:id/board/:player_id",
+      "headers": {"X-Test-Password": "clemson-test-2026"},
+      "body": null,
+      "expected_status": 200,
+      "expected_response_contains": {
+                "board": [
+                "O ~ ~ ~ ~",
+                "~ ~ ~ ~ ~",
+                "~ X ~ ~ ~",
+                "~ ~ ~ O ~",
+                "~ ~ ~ ~ ~"
+                ]
+                } 
+    },
+    {
+      "name": "Player joins same game twice",
+      "why": "Ensures the server prevents a player from joining the same game multiple times.",
+      "method": "POST",
+      "endpoint": "/api/games/:id/join",
+      "headers": {},
+      "body": { "player_id": 1 },
+      "expected_status": 400,
+      "expected_response_contains": { "error": true }
+    },
+    {
+      "name": "Place ship at valid game's borders",
+      "why": "Ensures ships can be placed along the edge of the board.",
+      "method": "POST",
+      "endpoint": "/api/games/:id/place",
+      "headers": {},
+      "body": {
+                "player_id": 1,
+                "ships": [
+                    { "row": 0, "col": 0 },
+                    { "row": 0, "col": 4 },
+                    { "row": 4, "col": 4 }
+                ]
+            },
+      "expected_status": 200,
+      "expected_response_contains": { "status": true }
+    },
+    {
+      "name": "Check new, valid game is initialized properly",
+      "why": "Confirms the game is properly listed.",
+      "method": "GET",
+      "endpoint": "/api/games/:id",
+      "headers": {},
+      "body": null,
+      "expected_status": 200,
+      "expected_response_contains": {
+                "game_id": 1,
+                "grid_size": 5,
+                "status": "waiting",
+                "current_turn_index": 0,
+                "active_players": 1
+            }
+    }
+  ]
+}
+       
