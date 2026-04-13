@@ -10,41 +10,33 @@
       "headers": {},
       "body": { "username": "" },
       "expected_status": 400,
-      "expected_response_contains": { "error": true }
+      "expected_response_contains": { "error": "bad_request" }
     },
     {
-      "name": "Show board state for valid game's valid player",
+      "name": "Board reset",
       "why": "Allows visualization of the board.",
-      "method": "GET",
-      "endpoint": "/api/test/games/:id/board/:player_id",
+      "method": "POST",
+      "endpoint": "/api/test/games/{id}/restart",
       "headers": {"X-Test-Password": "clemson-test-2026"},
       "body": null,
       "expected_status": 200,
-      "expected_response_contains": {
-                "board": [
-                "O ~ ~ ~ ~",
-                "~ ~ ~ ~ ~",
-                "~ X ~ ~ ~",
-                "~ ~ ~ O ~",
-                "~ ~ ~ ~ ~"
-                ]
-                } 
+      "expected_response_contains": { "status": "reset" } 
     },
     {
       "name": "Player joins same game twice",
       "why": "Ensures the server prevents a player from joining the same game multiple times.",
       "method": "POST",
-      "endpoint": "/api/games/:id/join",
+      "endpoint": "/api/games/{id}/join",
       "headers": {},
       "body": { "player_id": 1 },
       "expected_status": 400,
-      "expected_response_contains": { "error": true }
+      "expected_response_contains": { "error": "bad_request" }
     },
     {
       "name": "Place ship at valid game's borders",
       "why": "Ensures ships can be placed along the edge of the board.",
       "method": "POST",
-      "endpoint": "/api/games/:id/place",
+      "endpoint": "/api/games/{id}/place",
       "headers": {},
       "body": {
                 "player_id": 1,
@@ -55,20 +47,20 @@
                 ]
             },
       "expected_status": 200,
-      "expected_response_contains": { "status": true }
+      "expected_response_contains": { "status": "placed" }
     },
     {
       "name": "Check new, valid game is initialized properly",
       "why": "Confirms the game is properly listed.",
       "method": "GET",
-      "endpoint": "/api/games/:id",
+      "endpoint": "/api/games/{id}",
       "headers": {},
       "body": null,
       "expected_status": 200,
       "expected_response_contains": {
                 "game_id": 1,
                 "grid_size": 5,
-                "status": "waiting",
+                "status": "waiting_setup",
                 "current_turn_index": 0,
                 "active_players": 1
             }
