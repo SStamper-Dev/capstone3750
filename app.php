@@ -666,7 +666,7 @@ if ($method === "GET" && preg_match("#^/api/games/(\d+)/moves$#", $path, $m)) {
     $stmt = $pdo->prepare("
         SELECT 
             player_id, 
-            x_cord AS `row`, y_cord AS `column`, 
+            x_cord AS `row`, y_cord AS `col`, 
             result, 
             made_at as timestamp,
             ROW_NUMBER() OVER (ORDER BY made_at ASC) AS move_number
