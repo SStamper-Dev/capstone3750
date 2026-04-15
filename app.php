@@ -815,7 +815,7 @@ function place_ships($pdo, $game_id, $data){
 	$stmt->execute([":game_id" => $game_id, ":player_id" => $data["player_id"]]);
 	$player = $stmt->fetch(PDO::FETCH_ASSOC);
 	if ($player && $player["has_placed_ships"]) {
-		respond(["error" => "conflict", "message" => "Ships already placed"], 409);
+		respond(["error" => "bad_request", "message" => "Ships already placed"], 400);
 	}
 
     //if game status is not waiting_setup, return error
