@@ -227,13 +227,6 @@ if ($method === "POST" && $path === "/api/games") {
         $game_status->execute([":game_id" => $game_id]);
         $game_status = $game_status->fetchColumn();
 
-
-        // Add creator as first player in game_player table with turn_order 0
-        $stmt = $pdo->prepare("INSERT INTO game_player (game_id, player_id, turn_order, is_out, joined_at, has_placed_ships) VALUES (:game_id, :player_id, 0, 0, NOW(), 0)");
-        $stmt->execute([
-            ":game_id" => $game_id,
-            ":player_id" => $data["creator_id"]
-        ]);
         $pdo->commit();
         respond([
             "game_id" => (int)$game_id,
