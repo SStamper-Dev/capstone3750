@@ -148,7 +148,8 @@ if ($method === "POST" && $path === "/api/players") {
         $existing_player = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($existing_player) {
-            respond(["player_id" => (int)$existing_player["player_id"]], 200);
+            // FIX 1: Reject duplicate usernames with a 409 Conflict
+            respond(["error" => "conflict", "message" => "Username already exists"], 409);
         }
 
         $stmt = $pdo->prepare("INSERT INTO player (username) VALUES (:username)");
@@ -206,8 +207,15 @@ if ($method === "POST" && $path === "/api/games") {
         respond(["error" => "bad_request", "message" => "Grid size must be between $grid_min and $grid_max"], 400);
     }
 
-    if ($data["max_players"] < 1) {
+    if ($data["max_players"] < 2) {
         respond(["error" => "bad_request", "message" => "Invalid max players"], 400);
+    }
+
+    // FIX 2: Check if creator exists
+    $stmt = $pdo->prepare("SELECT 1 FROM player WHERE player_id = :creator_id");
+    $stmt->execute([":creator_id" => $data["creator_id"]]);
+    if (!$stmt->fetch()) {
+        respond(["error" => "bad_request", "message" => "Creator does not exist"], 400);
     }
 
     try {
@@ -445,6 +453,17 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
         if (!$player) respond(["error"=>"not_found", "message"=>"Player not in game"],404);
         if ($player["status"] !== "playing") respond(["error"=>"bad_request", "message"=>"Game not active"],400);
         if ($player["is_out"]) respond(["error"=>"bad_request", "message"=>"Player eliminated"],400);
+        
+        // FIX 6A: Duplicate cell check MUST happen before Turn Order check
+        $stmt_dup = $pdo->prepare("SELECT 1 FROM move WHERE game_id = :game_id AND player_id = :player_id AND x_cord = :row AND y_cord = :col LIMIT 1");
+        $stmt_dup->execute([":game_id" => $game_id, ":player_id" => $player_id, ":row" => $row, ":col" => $col]);
+        
+        if ($stmt_dup->fetch()) {
+            $pdo->rollBack();
+            respond(["error" => "conflict", "message" => "Cell already fired upon"], 409);
+        }
+
+        // FIX 6B: Turn check happens last
         if ($player["current_turn_index"] != $player["turn_order"]) respond(["error"=>"forbidden", "message"=>"Not your turn"],403);
         /* ---------------------------------------
         Prevent shooting same location twice
@@ -656,6 +675,13 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
 if ($method === "GET" && preg_match("#^/api/games/(\d+)/moves$#", $path, $m)) {
     $game_id = $m[1]; // Extract game ID from URL
 
+    // FIX 5: Validate game exists before fetching moves
+    $stmt = $pdo->prepare("SELECT 1 FROM game WHERE game_id = :game_id");
+    $stmt->execute([":game_id" => $game_id]);
+    if (!$stmt->fetch()) {
+        respond(["error" => "not_found", "message" => "Game not found"], 404);
+    }
+
     $stmt = $pdo->prepare("
         SELECT 
             player_id, 
@@ -807,8 +833,15 @@ function place_ships($pdo, $game_id, $data){
 	$stmt = $pdo->prepare("SELECT has_placed_ships FROM game_player WHERE game_id = :game_id AND player_id = :player_id");
 	$stmt->execute([":game_id" => $game_id, ":player_id" => $data["player_id"]]);
 	$player = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // FIX 3: Reject if player isn't in the game
+	if (!$player) {
+	    respond(["error" => "forbidden", "message" => "Player not in game"], 403);
+	}
+	
+	// FIX 4: Return 409 Conflict instead of 400 Bad Request
 	if ($player && $player["has_placed_ships"]) {
-		respond(["error" => "bad_request", "message" => "Ships already placed"], 400);
+		respond(["error" => "conflict", "message" => "Ships already placed"], 409);
 	}
 
     //if game status is not waiting_setup, return error
