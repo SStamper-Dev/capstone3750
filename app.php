@@ -84,8 +84,10 @@ function require_test_mode() {
     }
 
     $headers = getallheaders();
-    if (!isset($headers["X-Test-Password"]) ||
-        $headers["X-Test-Password"] !== $TEST_PASSWORD) {
+    // Railway proxy drops custom headers into HTTP_ prefixed server variables
+    $provided_password = $_SERVER['HTTP_X_TEST_PASSWORD'] ?? ($headers["X-Test-Password"] ?? null);
+    
+    if ($provided_password !== $TEST_PASSWORD) {
         respond(["error" => "Invalid test password"], 403);
     }
 }
@@ -169,6 +171,12 @@ if ($method === "POST" && $path === "/api/players") {
 // GET /api/players/{id}/stats
 if ($method === "GET" && preg_match("#^/api/players/(\d+)/stats$#", $path, $m)) {
     $player_id = $m[1]; // Extract player ID from URL
+
+    $stmt = $pdo->prepare("SELECT 1 FROM player WHERE player_id = :player_id");
+    $stmt->execute([":player_id" => $player_id]);
+    if (!$stmt->fetch()) {
+        respond(["error" => "not_found", "message" => "Player not found"], 404);
+    }
 
     // query player table get their total_wins, total_losses, total_shots, and total_hits fields
     $stmt = $pdo->prepare("
@@ -425,9 +433,16 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
     $row = (int)$data["row"];
     $col = (int)$data["col"];
 
-    $stmt = $pdo->prepare("SELECT grid_size FROM game WHERE game_id = :game_id");
+    $stmt = $pdo->prepare("SELECT grid_size, status FROM game WHERE game_id = :game_id");
     $stmt->execute([":game_id" => $game_id]);
     $game_info = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($game_info["status"] === "waiting_setup") {
+        respond(["error" => "forbidden", "message" => "Game not active"], 403);
+    }
+    if ($game_info["status"] === "finished") {
+        respond(["error" => "bad_request", "message" => "Game is finished"], 400);
+    }
     if (!$game_info) respond(["error" => "not_found", "message" => "Game does not exist"], 404);
 
     if($row < 0 || $row >= $game_info["grid_size"] || $col < 0 || $col >= $game_info["grid_size"]) {
@@ -464,7 +479,10 @@ if ($method === "POST" && preg_match("#^/api/games/(\d+)/fire$#", $path, $m)) {
         }
 
         // FIX 6B: Turn check happens last
-        if ($player["current_turn_index"] != $player["turn_order"]) respond(["error"=>"forbidden", "message"=>"Not your turn"],403);
+        if ($player["current_turn_index"] != $player["turn_order"]) {
+            $pdo->rollBack();
+            respond(["error"=>"forbidden", "message"=>"Not your turn"],403);
+        }
         /* ---------------------------------------
         Prevent shooting same location twice
         --------------------------------------- */
