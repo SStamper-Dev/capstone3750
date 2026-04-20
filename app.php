@@ -728,6 +728,14 @@ if ($method === "POST" &&
     require_test_mode();
     $game_id = $m[1];
 
+    //return 404 if game doesn't exist
+    $stmt = $pdo->prepare("SELECT 1 FROM game WHERE game_id = :game_id");
+    $stmt->execute([":game_id" => $game_id]);
+    if (!$stmt->fetch()) {
+        respond(["error" => "not_found", "message" => "Game not found"], 404);
+    }
+
+
     //remove ships in game
     $stmt = $pdo->prepare("DELETE FROM ship WHERE game_id = :game_id");
     $stmt->execute([":game_id" => $game_id]);
