@@ -168,6 +168,26 @@ if ($method === "POST" && $path === "/api/players") {
     }
 }
 
+// POST /api/players/login (CUSTOM ENDPOINT)
+if ($method === "POST" && $path === "/api/players/login") {
+    $data = json_input();
+
+    if (!isset($data["username"]) || trim($data["username"]) === "") {
+        respond(["error" => "bad_request", "message" => "Username required"], 400);
+    }
+
+    $stmt = $pdo->prepare("SELECT player_id FROM player WHERE username = :username");
+    $stmt->execute([":username" => $data["username"]]);
+    $player = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($player) {
+        respond(["player_id" => (int)$player["player_id"]], 200);
+    } else {
+        // Return 404 so the frontend can show the "User not found" error
+        respond(["error" => "not_found", "message" => "Operative ID not found in database"], 404);
+    }
+}
+
 // GET /api/players/{id}/stats
 if ($method === "GET" && preg_match("#^/api/players/(\d+)/stats$#", $path, $m)) {
     $player_id = $m[1]; // Extract player ID from URL
